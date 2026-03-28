@@ -75,6 +75,7 @@ func (p *ComputeProvider) ListCloudRouters(ctx context.Context, project string) 
 				current := model.CloudRouter{
 					Name:   router.Name,
 					Region: basename(router.Region),
+					ASN:    formatASN(router.Bgp),
 				}
 				for _, iface := range router.Interfaces {
 					if iface == nil {
@@ -149,6 +150,13 @@ func formatVLANID(value int64) string {
 		return ""
 	}
 	return strconv.FormatInt(value, 10)
+}
+
+func formatASN(bgp *compute.RouterBgp) string {
+	if bgp == nil || bgp.Asn <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(bgp.Asn, 10)
 }
 
 func selectActiveMacsecKeyName(now time.Time, macsec *compute.InterconnectMacsec) string {

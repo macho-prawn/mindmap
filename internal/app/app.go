@@ -212,6 +212,17 @@ Selector Expansion:
   -o + -w        expands all environments under that workload
   -o + -e        expands all workloads containing that environment
   -o + -w + -e   resolves one exact workload/environment tuple
+
+Output:
+  Omit -f to write Mermaid output by default.
+  Mermaid output file: netmap-interconnect-<src>-to-<dst>-<timestamp>.mmd
+  CSV output file:     netmap-interconnect-<src>-to-<dst>-<timestamp>.csv
+  TSV output file:     netmap-interconnect-<src>-to-<dst>-<timestamp>.tsv
+  JSON output file:    netmap-interconnect-<src>-to-<dst>-<timestamp>.json
+  Tree output file:    netmap-interconnect-<src>-to-<dst>-<timestamp>.tree.txt
+  Org fanout output:   netmap-interconnect-<src>-to-<org>-all-<timestamp>.<ext>
+  On success, the CLI prints: output file: <path>
+  Mermaid output can be viewed in https://mermaid.live
 `) + "\n"
 }
 
@@ -397,6 +408,7 @@ func baseItem(srcProject, dstProject string, interconnect model.DedicatedInterco
 		DstVLANAttachmentState:  attachment.State,
 		DstVLANAttachmentVLANID: attachment.VLANID,
 		DstCloudRouter:          router.Name,
+		DstCloudRouterASN:       router.ASN,
 	}
 }
 

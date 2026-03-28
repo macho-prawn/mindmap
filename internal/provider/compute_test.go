@@ -59,3 +59,12 @@ func TestSelectActiveMacsecKeyName(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatASN(t *testing.T) {
+	if got := formatASN(nil); got != "" {
+		t.Fatalf("expected empty ASN for nil bgp, got %q", got)
+	}
+	if got := formatASN(&compute.RouterBgp{Asn: 64512}); got != "64512" {
+		t.Fatalf("expected 64512, got %q", got)
+	}
+}

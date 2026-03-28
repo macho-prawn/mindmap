@@ -123,6 +123,15 @@ func TestParseOptionsHelp(t *testing.T) {
 	if !strings.Contains(opts.Usage, "-o + -e        expands all workloads containing that environment") {
 		t.Fatalf("expected explicit -o + -e help text, got %+v", opts)
 	}
+	if !strings.Contains(opts.Usage, "Omit -f to write Mermaid output by default.") {
+		t.Fatalf("expected default mermaid guidance, got %+v", opts)
+	}
+	if !strings.Contains(opts.Usage, "Mermaid output can be viewed in https://mermaid.live") {
+		t.Fatalf("expected mermaid.live guidance, got %+v", opts)
+	}
+	if !strings.Contains(opts.Usage, "output file: <path>") {
+		t.Fatalf("expected output path guidance, got %+v", opts)
+	}
 }
 
 func TestRunWritesMermaidByDefault(t *testing.T) {
@@ -148,6 +157,7 @@ func TestRunWritesMermaidByDefault(t *testing.T) {
 		routers: []model.CloudRouter{{
 			Name:   "router-1",
 			Region: "us-central1",
+			ASN:    "64512",
 			Interfaces: []model.RouterInterface{{
 				Name:                     "if-1",
 				LinkedInterconnectAttach: "attachment-1",
@@ -202,7 +212,13 @@ func TestRunWritesMermaidByDefault(t *testing.T) {
 	if !strings.Contains(content, "flowchart LR") || !strings.Contains(content, "remote_bgp_peer: peer-1") || !strings.Contains(content, "dst_cloud_router_interface: if-1") {
 		t.Fatalf("unexpected mermaid content: %s", content)
 	}
+	if !strings.Contains(content, "<br>") || strings.Contains(content, "\\n") {
+		t.Fatalf("expected mermaid.live-compatible line breaks, got: %s", content)
+	}
 	if !strings.Contains(content, "src_macsec_enabled: true") || !strings.Contains(content, "src_macsec_keyname: macsec-key-a") {
+		t.Fatalf("unexpected mermaid content: %s", content)
+	}
+	if !strings.Contains(content, "dst_cloud_router_asn: 64512") {
 		t.Fatalf("unexpected mermaid content: %s", content)
 	}
 	statusOutput := status.String()
@@ -291,6 +307,7 @@ func TestRunWithOrgFanoutWritesCombinedOutput(t *testing.T) {
 			"project-a": {{
 				Name:   "router-a",
 				Region: "us-central1",
+				ASN:    "64520",
 				Interfaces: []model.RouterInterface{{
 					Name:                     "if-a",
 					LinkedInterconnectAttach: "attachment-a",
@@ -307,6 +324,7 @@ func TestRunWithOrgFanoutWritesCombinedOutput(t *testing.T) {
 			"project-b": {{
 				Name:   "router-b",
 				Region: "europe-west1",
+				ASN:    "64521",
 				Interfaces: []model.RouterInterface{{
 					Name:                     "if-b",
 					LinkedInterconnectAttach: "attachment-b",
@@ -423,6 +441,7 @@ func TestBuildMappingItemsIncludesGlobalSrcRegionAndUnmapped(t *testing.T) {
 		[]model.CloudRouter{{
 			Name:   "router-1",
 			Region: "europe-west1",
+			ASN:    "64530",
 			Interfaces: []model.RouterInterface{{
 				Name:                     "if-1",
 				LinkedInterconnectAttach: "attachment-1",
@@ -439,8 +458,12 @@ func TestBuildMappingItemsIncludesGlobalSrcRegionAndUnmapped(t *testing.T) {
 		t.Fatalf("expected src_region=global in all items")
 	}
 	foundMacsec := false
+	foundRouterASN := false
 	foundUnmapped := false
 	for _, item := range items {
+		if item.SrcInterconnect == "mapped" && item.DstCloudRouterASN == "64530" {
+			foundRouterASN = true
+		}
 		if item.SrcInterconnect == "unmapped" && item.SrcMacsecEnabled && item.SrcMacsecKeyName == "macsec-key-unmapped" {
 			foundMacsec = true
 		}
@@ -450,6 +473,9 @@ func TestBuildMappingItemsIncludesGlobalSrcRegionAndUnmapped(t *testing.T) {
 	}
 	if !foundMacsec {
 		t.Fatalf("expected source macsec fields to propagate")
+	}
+	if !foundRouterASN {
+		t.Fatalf("expected router asn to propagate")
 	}
 	if !foundUnmapped {
 		t.Fatalf("expected unmapped interconnect item")
@@ -477,6 +503,7 @@ func TestRunWithDuplicateProjectFanoutCachesDiscoveryAndLogsEachTuple(t *testing
 			"shared-project": {{
 				Name:   "router-shared",
 				Region: "us-central1",
+				ASN:    "64540",
 				Interfaces: []model.RouterInterface{{
 					Name:                     "if-shared",
 					LinkedInterconnectAttach: "attachment-shared",
@@ -553,7 +580,7 @@ func TestRunWithDuplicateProjectFanoutCachesDiscoveryAndLogsEachTuple(t *testing
 	if count := strings.Count(data, "dbc,platform,dev,src-project"); count != 1 {
 		t.Fatalf("expected one platform/dev csv branch, got %d in %s", count, data)
 	}
-	if !strings.Contains(data, ",global,ACTIVE,true,shared-key,shared-project,") {
+	if !strings.Contains(data, ",global,ACTIVE,true,shared-key,shared-project,us-central1,attachment-shared,ACTIVE,,router-shared,64540,") {
 		t.Fatalf("expected source macsec fields in csv output, got %s", data)
 	}
 }

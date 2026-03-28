@@ -103,7 +103,7 @@ GOCACHE=/tmp/go-build-cache /usr/local/go/bin/go run ./cmd/netmap \
 - Uses a shared hierarchy in JSON/tree/Mermaid output rooted at `org -> workload -> environment -> src_project -> src_interconnect`
 - Uses one canonical field set across outputs, matching the CSV/TSV column names
 - Writes progress messages to `stderr`, including a `⏳` start line, one completion line per resolved org/workload/environment tuple, and a final `output file: <path>` line on success
-- In Mermaid output, each `org -> workload -> environment -> src_project` branch fans out to dedicated interconnects first, then collapses to one `dst_project` box and one `dst_region` box only when those values are shared across every mapped interconnect in that branch
+- In Mermaid output, identical `environment`, `src_project`, `src_interconnect`, and `dst_region` labels are collapsed into shared nodes so multiple parent branches can fan into the same box before the graph fans back out
 - Uses Google Cloud Go libraries and ADC instead of shelling out to `gcloud`
 
 ### `-t vpn`
@@ -113,7 +113,7 @@ GOCACHE=/tmp/go-build-cache /usr/local/go/bin/go run ./cmd/netmap \
 
 ## Output
 
-If `-f` is not provided, the CLI writes a Mermaid file:
+If `-f` is not provided, the CLI writes Mermaid output by default:
 
 ```text
 netmap-interconnect-<src-project>-to-<dst-project>-<timestamp>.mmd
@@ -129,10 +129,20 @@ If `-f` is provided, Mermaid is suppressed and only the selected format is writt
 - Org fanout mode:
   - `netmap-interconnect-<src>-to-<org>-all-<timestamp>.<ext>`
 
+On success, the CLI prints the generated path as:
+
+```text
+output file: <path>
+```
+
+Use that path directly when opening or sharing the generated file.
+
+Mermaid output can be viewed in `https://mermaid.live`.
+
 ### CSV/TSV columns
 
 ```text
-org,workload,environment,src_project,src_interconnect,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vlan_attachment,dst_vlan_attachment_state,dst_vlan_attachment_vlanid,dst_cloud_router,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,bgp_peering_status
+org,workload,environment,src_project,src_interconnect,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vlan_attachment,dst_vlan_attachment_state,dst_vlan_attachment_vlanid,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,bgp_peering_status
 ```
 
 ## Notes
@@ -140,8 +150,10 @@ org,workload,environment,src_project,src_interconnect,mapped,src_region,src_stat
 - Source dedicated interconnects are modeled as global resources
 - Source dedicated interconnect MACsec status and key name are emitted in the canonical source field block when available
 - Destination VLAN attachments and Cloud Routers are modeled as regional resources
+- Destination Cloud Router ASN is emitted in the canonical destination router field block when available
 - Unmapped source interconnects are still included in the output
-- Mermaid output preserves `org -> workload -> environment` branch uniqueness even when different branches resolve to the same destination project or region labels
+- Mermaid output is a shared-node DAG and may intentionally collapse matching labels across workload, environment, source-project, interconnect, and destination-region layers
+- Mermaid labels use `<br>` line breaks so they render correctly in `https://mermaid.live`
 - Runtime discovery is performed with Google Compute API clients, not the `gcloud` CLI
 
 <p align="center"><sub>Vibe-Coded with &#x2665;&#xFE0E;</sub></p>

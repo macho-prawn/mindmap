@@ -39,6 +39,7 @@ type BGPPeer struct {
 type CloudRouter struct {
 	Name       string
 	Region     string
+	ASN        string
 	Interfaces []RouterInterface
 	BGPPeers   []BGPPeer
 }
@@ -73,6 +74,7 @@ type MappingItem struct {
 	DstVLANAttachmentState    string `json:"dst_vlan_attachment_state"`
 	DstVLANAttachmentVLANID   string `json:"dst_vlan_attachment_vlanid"`
 	DstCloudRouter            string `json:"dst_cloud_router"`
+	DstCloudRouterASN         string `json:"dst_cloud_router_asn"`
 	DstCloudRouterInterface   string `json:"dst_cloud_router_interface"`
 	DstCloudRouterInterfaceIP string `json:"dst_cloud_router_interface_ip"`
 	RemoteBGPPeer             string `json:"remote_bgp_peer"`

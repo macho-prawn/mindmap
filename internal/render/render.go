@@ -36,6 +36,7 @@ var separatedHeader = []string{
 	"dst_vlan_attachment_state",
 	"dst_vlan_attachment_vlanid",
 	"dst_cloud_router",
+	"dst_cloud_router_asn",
 	"dst_cloud_router_interface",
 	"dst_cloud_router_interface_ip",
 	"remote_bgp_peer",
@@ -88,6 +89,7 @@ func renderSeparated(report model.Report, delimiter rune) ([]byte, error) {
 			item.DstVLANAttachmentState,
 			item.DstVLANAttachmentVLANID,
 			item.DstCloudRouter,
+			item.DstCloudRouterASN,
 			item.DstCloudRouterInterface,
 			item.DstCloudRouterInterfaceIP,
 			item.RemoteBGPPeer,
@@ -122,27 +124,49 @@ func renderTree(report model.Report) []byte {
 }
 
 func renderMermaid(report model.Report) []byte {
-	hierarchy := buildHierarchy(report)
+	items := normalizedItems(report)
 	var b strings.Builder
 	b.WriteString("flowchart LR\n")
 
 	seen := make(map[string]struct{})
-	for _, org := range hierarchy.Orgs {
-		orgID := mermaidID("org-" + org.Name)
-		defineMermaidNode(&b, seen, orgID, "org: "+valueOrUnknown(org.Name))
-		for _, workload := range org.Workloads {
-			workloadID := mermaidID("workload-" + org.Name + "-" + workload.Name)
-			linkIfMissing(&b, seen, orgID, workloadID, "workload: "+valueOrUnknown(workload.Name))
-			for _, environment := range workload.Environments {
-				environmentID := mermaidID("environment-" + org.Name + "-" + workload.Name + "-" + environment.Name)
-				linkIfMissing(&b, seen, workloadID, environmentID, "environment: "+valueOrUnknown(environment.Name))
-				for _, srcProject := range environment.SrcProjects {
-					srcID := mermaidID("src-" + org.Name + "-" + workload.Name + "-" + environment.Name + "-" + srcProject.SrcProject)
-					linkIfMissing(&b, seen, environmentID, srcID, "src_project: "+valueOrUnknown(srcProject.SrcProject))
-					scope := strings.Join([]string{org.Name, workload.Name, environment.Name, srcProject.SrcProject}, "/")
-					renderMermaidSourceProject(&b, seen, scope, srcID, srcProject)
-				}
+	for _, item := range items {
+		orgID := mermaidID("org-" + item.Org)
+		workloadID := mermaidID("workload-" + item.Org + "-" + item.Workload)
+		environmentID := mermaidID("environment-" + item.Org + "-" + item.Environment)
+		srcID := mermaidID("src-" + item.Org + "-" + item.SrcProject)
+		interconnectID := mermaidID("ic-" + item.Org + "-" + item.SrcProject + "-" + item.SrcInterconnect)
+		dstProjectID := mermaidID("dst-project-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject)
+
+		defineMermaidNode(&b, seen, orgID, "org: "+valueOrUnknown(item.Org))
+		linkIfMissing(&b, seen, orgID, workloadID, "workload: "+valueOrUnknown(item.Workload))
+		linkIfMissing(&b, seen, workloadID, environmentID, "environment: "+valueOrUnknown(item.Environment))
+		linkIfMissing(&b, seen, environmentID, srcID, "src_project: "+valueOrUnknown(item.SrcProject))
+		linkIfMissing(&b, seen, srcID, interconnectID, interconnectItemLabel(item))
+		linkIfMissing(&b, seen, interconnectID, dstProjectID, destinationProjectItemLabel(item))
+		if !item.Mapped {
+			unmappedID := mermaidID("unmapped-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject)
+			linkIfMissing(&b, seen, dstProjectID, unmappedID, "unmapped")
+			continue
+		}
+
+		regionID := mermaidID("dst-region-" + item.Org + "-" + item.SrcProject + "-" + item.DstRegion)
+		attachmentID := mermaidID("attachment-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVLANAttachment)
+		routerID := mermaidID("router-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVLANAttachment + "-" + item.DstCloudRouter)
+		interfaceID := mermaidID("interface-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVLANAttachment + "-" + item.DstCloudRouter + "-" + item.DstCloudRouterInterface)
+		peerID := mermaidID("peer-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVLANAttachment + "-" + item.DstCloudRouter + "-" + item.DstCloudRouterInterface + "-" + item.RemoteBGPPeer + "-" + item.RemoteBGPPeerIP)
+
+		linkIfMissing(&b, seen, dstProjectID, regionID, destinationRegionItemLabel(item))
+		linkIfMissing(&b, seen, regionID, attachmentID, attachmentItemLabel(item))
+		linkIfMissing(&b, seen, attachmentID, routerID, routerItemLabel(item))
+		if hasInterfaceItem(item) {
+			linkIfMissing(&b, seen, routerID, interfaceID, interfaceItemLabel(item))
+		}
+		if hasPeerItem(item) {
+			parentID := routerID
+			if hasInterfaceItem(item) {
+				parentID = interfaceID
 			}
+			linkIfMissing(&b, seen, parentID, peerID, peerItemLabel(item))
 		}
 	}
 	return []byte(b.String())
@@ -199,6 +223,7 @@ type jsonAttachmentNode struct {
 	DstVLANAttachmentState    string `json:"dst_vlan_attachment_state"`
 	DstVLANAttachmentVLANID   string `json:"dst_vlan_attachment_vlanid"`
 	DstCloudRouter            string `json:"dst_cloud_router"`
+	DstCloudRouterASN         string `json:"dst_cloud_router_asn"`
 	DstCloudRouterInterface   string `json:"dst_cloud_router_interface"`
 	DstCloudRouterInterfaceIP string `json:"dst_cloud_router_interface_ip"`
 	RemoteBGPPeer             string `json:"remote_bgp_peer"`
@@ -256,16 +281,12 @@ type attachmentGroup struct {
 	DstVLANAttachmentState    string
 	DstVLANAttachmentVLANID   string
 	DstCloudRouter            string
+	DstCloudRouterASN         string
 	DstCloudRouterInterface   string
 	DstCloudRouterInterfaceIP string
 	RemoteBGPPeer             string
 	RemoteBGPPeerIP           string
 	BGPPeeringStatus          string
-}
-
-type mermaidCollapse struct {
-	SharedProject string
-	SharedRegion  string
 }
 
 func buildJSONReport(report model.Report) jsonReport {
@@ -326,6 +347,7 @@ func buildJSONInterconnects(groups []interconnectGroup) []jsonInterconnectNode {
 						DstVLANAttachmentState:    valueOrUnknown(attachment.DstVLANAttachmentState),
 						DstVLANAttachmentVLANID:   valueOrUnknown(attachment.DstVLANAttachmentVLANID),
 						DstCloudRouter:            valueOrUnknown(attachment.DstCloudRouter),
+						DstCloudRouterASN:         valueOrUnknown(attachment.DstCloudRouterASN),
 						DstCloudRouterInterface:   valueOrUnknown(attachment.DstCloudRouterInterface),
 						DstCloudRouterInterfaceIP: valueOrUnknown(attachment.DstCloudRouterInterfaceIP),
 						RemoteBGPPeer:             valueOrUnknown(attachment.RemoteBGPPeer),
@@ -490,6 +512,7 @@ func groupRegions(items []model.MappingItem) []regionGroup {
 				DstVLANAttachmentState:    item.DstVLANAttachmentState,
 				DstVLANAttachmentVLANID:   item.DstVLANAttachmentVLANID,
 				DstCloudRouter:            item.DstCloudRouter,
+				DstCloudRouterASN:         item.DstCloudRouterASN,
 				DstCloudRouterInterface:   item.DstCloudRouterInterface,
 				DstCloudRouterInterfaceIP: item.DstCloudRouterInterfaceIP,
 				RemoteBGPPeer:             item.RemoteBGPPeer,
@@ -613,9 +636,10 @@ func drawTreeAttachment(b *strings.Builder, attachment attachmentGroup, indent s
 	)
 	fmt.Fprintf(
 		b,
-		"%s`-- dst_cloud_router: %s\n",
+		"%s`-- dst_cloud_router: %s [dst_cloud_router_asn: %s]\n",
 		childIndent,
 		valueOrUnknown(attachment.DstCloudRouter),
+		valueOrUnknown(attachment.DstCloudRouterASN),
 	)
 	fmt.Fprintf(
 		b,
@@ -634,87 +658,9 @@ func drawTreeAttachment(b *strings.Builder, attachment attachmentGroup, indent s
 	)
 }
 
-func renderMermaidSourceProject(b *strings.Builder, seen map[string]struct{}, scope, srcID string, srcProject sourceGroup) {
-	collapse := sharedMermaidNodes(srcProject.Interconnects)
-	for _, interconnect := range srcProject.Interconnects {
-		interconnectID := mermaidID("ic-" + scope + "-" + interconnect.SrcInterconnect)
-		linkIfMissing(b, seen, srcID, interconnectID, interconnectNodeLabel(interconnect))
-		renderMermaidInterconnect(b, seen, scope, interconnectID, interconnect, collapse)
-	}
-}
-
-func renderMermaidInterconnect(b *strings.Builder, seen map[string]struct{}, scope, interconnectID string, interconnect interconnectGroup, collapse mermaidCollapse) {
-	for _, dst := range interconnect.DstProjects {
-		dstProjectID := mermaidID("dst-project-" + scope + "-" + interconnect.SrcInterconnect + "-" + dst.DstProject)
-		if collapse.SharedProject != "" && dst.Mapped {
-			dstProjectID = mermaidID("dst-project-" + scope + "-" + dst.DstProject)
-		}
-		linkIfMissing(b, seen, interconnectID, dstProjectID, destinationProjectNodeLabel(dst))
-		if !dst.Mapped {
-			unmappedID := mermaidID("unmapped-" + scope + "-" + interconnect.SrcInterconnect + "-" + dst.DstProject)
-			linkIfMissing(b, seen, dstProjectID, unmappedID, "unmapped")
-			continue
-		}
-
-		for _, region := range dst.DstRegions {
-			regionID := mermaidID("dst-region-" + scope + "-" + interconnect.SrcInterconnect + "-" + dst.DstProject + "-" + region.DstRegion)
-			if collapse.SharedRegion != "" {
-				regionID = mermaidID("dst-region-" + scope + "-" + region.DstRegion)
-			}
-			linkIfMissing(b, seen, dstProjectID, regionID, destinationRegionNodeLabel(region))
-			for _, attachment := range region.DstVLANAttachments {
-				attachmentID := mermaidID("attachment-" + scope + "-" + interconnect.SrcInterconnect + "-" + dst.DstProject + "-" + region.DstRegion + "-" + attachment.DstVLANAttachment)
-				routerID := mermaidID("router-" + scope + "-" + interconnect.SrcInterconnect + "-" + dst.DstProject + "-" + region.DstRegion + "-" + attachment.DstVLANAttachment + "-" + attachment.DstCloudRouter)
-				interfaceID := mermaidID("interface-" + scope + "-" + interconnect.SrcInterconnect + "-" + dst.DstProject + "-" + region.DstRegion + "-" + attachment.DstVLANAttachment + "-" + attachment.DstCloudRouter + "-" + attachment.DstCloudRouterInterface)
-				peerID := mermaidID("peer-" + scope + "-" + interconnect.SrcInterconnect + "-" + dst.DstProject + "-" + region.DstRegion + "-" + attachment.DstVLANAttachment + "-" + attachment.DstCloudRouter + "-" + attachment.DstCloudRouterInterface + "-" + attachment.RemoteBGPPeer + "-" + attachment.RemoteBGPPeerIP)
-
-				linkIfMissing(b, seen, regionID, attachmentID, attachmentNodeLabel(attachment))
-				linkIfMissing(b, seen, attachmentID, routerID, routerNodeLabel(attachment))
-				if hasInterface(attachment) {
-					linkIfMissing(b, seen, routerID, interfaceID, interfaceNodeLabel(attachment))
-				}
-				if hasPeer(attachment) {
-					parentID := routerID
-					if hasInterface(attachment) {
-						parentID = interfaceID
-					}
-					linkIfMissing(b, seen, parentID, peerID, peerNodeLabel(attachment))
-				}
-			}
-		}
-	}
-}
-
-func sharedMermaidNodes(interconnects []interconnectGroup) mermaidCollapse {
-	projects := make(map[string]struct{})
-	regions := make(map[string]struct{})
-	mappedProjects := 0
-	for _, interconnect := range interconnects {
-		for _, dst := range interconnect.DstProjects {
-			if !dst.Mapped {
-				continue
-			}
-			projects[dst.DstProject] = struct{}{}
-			mappedProjects++
-			for _, region := range dst.DstRegions {
-				regions[region.DstRegion] = struct{}{}
-			}
-		}
-	}
-
-	var collapse mermaidCollapse
-	if mappedProjects > 0 && len(projects) == 1 {
-		collapse.SharedProject = soleKey(projects)
-	}
-	if mappedProjects > 0 && len(regions) == 1 {
-		collapse.SharedRegion = soleKey(regions)
-	}
-	return collapse
-}
-
 func interconnectNodeLabel(interconnect interconnectGroup) string {
 	return fmt.Sprintf(
-		"src_interconnect: %s\\nsrc_region: %s\\nsrc_state: %s\\nsrc_macsec_enabled: %t\\nsrc_macsec_keyname: %s",
+		"src_interconnect: %s<br>src_region: %s<br>src_state: %s<br>src_macsec_enabled: %t<br>src_macsec_keyname: %s",
 		valueOrUnknown(interconnect.SrcInterconnect),
 		valueOrUnknown(interconnect.SrcRegion),
 		valueOrUnknown(interconnect.SrcState),
@@ -723,9 +669,66 @@ func interconnectNodeLabel(interconnect interconnectGroup) string {
 	)
 }
 
+func interconnectItemLabel(item model.MappingItem) string {
+	return fmt.Sprintf(
+		"src_interconnect: %s<br>src_region: %s<br>src_state: %s<br>src_macsec_enabled: %t<br>src_macsec_keyname: %s",
+		valueOrUnknown(item.SrcInterconnect),
+		valueOrUnknown(item.SrcRegion),
+		valueOrUnknown(item.SrcState),
+		item.SrcMacsecEnabled,
+		valueOrUnknown(item.SrcMacsecKeyName),
+	)
+}
+
+func destinationProjectItemLabel(item model.MappingItem) string {
+	return fmt.Sprintf(
+		"dst_project: %s<br>mapped: %t",
+		valueOrUnknown(item.DstProject),
+		item.Mapped,
+	)
+}
+
+func destinationRegionItemLabel(item model.MappingItem) string {
+	return "dst_region: " + valueOrUnknown(item.DstRegion)
+}
+
+func attachmentItemLabel(item model.MappingItem) string {
+	return fmt.Sprintf(
+		"dst_vlan_attachment: %s<br>dst_vlan_attachment_state: %s<br>dst_vlan_attachment_vlanid: %s",
+		valueOrUnknown(item.DstVLANAttachment),
+		valueOrUnknown(item.DstVLANAttachmentState),
+		valueOrUnknown(item.DstVLANAttachmentVLANID),
+	)
+}
+
+func routerItemLabel(item model.MappingItem) string {
+	return fmt.Sprintf(
+		"dst_cloud_router: %s<br>dst_cloud_router_asn: %s",
+		valueOrUnknown(item.DstCloudRouter),
+		valueOrUnknown(item.DstCloudRouterASN),
+	)
+}
+
+func interfaceItemLabel(item model.MappingItem) string {
+	return fmt.Sprintf(
+		"dst_cloud_router_interface: %s<br>dst_cloud_router_interface_ip: %s",
+		valueOrUnknown(item.DstCloudRouterInterface),
+		valueOrUnknown(item.DstCloudRouterInterfaceIP),
+	)
+}
+
+func peerItemLabel(item model.MappingItem) string {
+	return fmt.Sprintf(
+		"remote_bgp_peer: %s<br>remote_bgp_peer_ip: %s<br>bgp_peering_status: %s",
+		valueOrUnknown(item.RemoteBGPPeer),
+		valueOrUnknown(item.RemoteBGPPeerIP),
+		valueOrUnknown(item.BGPPeeringStatus),
+	)
+}
+
 func destinationProjectNodeLabel(dst destinationGroup) string {
 	return fmt.Sprintf(
-		"dst_project: %s\\nmapped: %t",
+		"dst_project: %s<br>mapped: %t",
 		valueOrUnknown(dst.DstProject),
 		dst.Mapped,
 	)
@@ -737,7 +740,7 @@ func destinationRegionNodeLabel(region regionGroup) string {
 
 func attachmentNodeLabel(attachment attachmentGroup) string {
 	return fmt.Sprintf(
-		"dst_vlan_attachment: %s\\ndst_vlan_attachment_state: %s\\ndst_vlan_attachment_vlanid: %s",
+		"dst_vlan_attachment: %s<br>dst_vlan_attachment_state: %s<br>dst_vlan_attachment_vlanid: %s",
 		valueOrUnknown(attachment.DstVLANAttachment),
 		valueOrUnknown(attachment.DstVLANAttachmentState),
 		valueOrUnknown(attachment.DstVLANAttachmentVLANID),
@@ -745,12 +748,16 @@ func attachmentNodeLabel(attachment attachmentGroup) string {
 }
 
 func routerNodeLabel(attachment attachmentGroup) string {
-	return "dst_cloud_router: " + valueOrUnknown(attachment.DstCloudRouter)
+	return fmt.Sprintf(
+		"dst_cloud_router: %s<br>dst_cloud_router_asn: %s",
+		valueOrUnknown(attachment.DstCloudRouter),
+		valueOrUnknown(attachment.DstCloudRouterASN),
+	)
 }
 
 func interfaceNodeLabel(attachment attachmentGroup) string {
 	return fmt.Sprintf(
-		"dst_cloud_router_interface: %s\\ndst_cloud_router_interface_ip: %s",
+		"dst_cloud_router_interface: %s<br>dst_cloud_router_interface_ip: %s",
 		valueOrUnknown(attachment.DstCloudRouterInterface),
 		valueOrUnknown(attachment.DstCloudRouterInterfaceIP),
 	)
@@ -758,7 +765,7 @@ func interfaceNodeLabel(attachment attachmentGroup) string {
 
 func peerNodeLabel(attachment attachmentGroup) string {
 	return fmt.Sprintf(
-		"remote_bgp_peer: %s\\nremote_bgp_peer_ip: %s\\nbgp_peering_status: %s",
+		"remote_bgp_peer: %s<br>remote_bgp_peer_ip: %s<br>bgp_peering_status: %s",
 		valueOrUnknown(attachment.RemoteBGPPeer),
 		valueOrUnknown(attachment.RemoteBGPPeerIP),
 		valueOrUnknown(attachment.BGPPeeringStatus),
@@ -771,6 +778,14 @@ func hasInterface(attachment attachmentGroup) bool {
 
 func hasPeer(attachment attachmentGroup) bool {
 	return strings.TrimSpace(attachment.RemoteBGPPeer) != "" || strings.TrimSpace(attachment.RemoteBGPPeerIP) != "" || strings.TrimSpace(attachment.BGPPeeringStatus) != ""
+}
+
+func hasInterfaceItem(item model.MappingItem) bool {
+	return strings.TrimSpace(item.DstCloudRouterInterface) != "" || strings.TrimSpace(item.DstCloudRouterInterfaceIP) != ""
+}
+
+func hasPeerItem(item model.MappingItem) bool {
+	return strings.TrimSpace(item.RemoteBGPPeer) != "" || strings.TrimSpace(item.RemoteBGPPeerIP) != "" || strings.TrimSpace(item.BGPPeeringStatus) != ""
 }
 
 func defineMermaidNode(b *strings.Builder, seen map[string]struct{}, id, label string) {
