@@ -102,7 +102,7 @@ GOCACHE=/tmp/go-build-cache /usr/local/go/bin/go run ./cmd/netmap \
 - Maps router interfaces and BGP peers where available
 - Uses a shared hierarchy in JSON/tree/Mermaid output rooted at `org -> workload -> environment -> src_project -> src_interconnect`
 - Uses one canonical field set across outputs, matching the CSV/TSV column names
-- Writes progress messages to `stderr`, including a `⏳` start line, one completion line per resolved org/workload/environment tuple, and a final `output file: <path>` line on success
+- Writes progress messages to `stderr`, including a Braille spinner while discovery is in progress, one completion line per resolved org/workload/environment tuple, and a final `output file: <path>` line on success
 - In Mermaid output, identical `environment`, `src_project`, `src_interconnect`, and `dst_region` labels are collapsed into shared nodes so multiple parent branches can fan into the same box before the graph fans back out
 - Uses Google Cloud Go libraries and ADC instead of shelling out to `gcloud`
 
@@ -142,7 +142,7 @@ Mermaid output can be viewed in `https://mermaid.live`.
 ### CSV/TSV columns
 
 ```text
-org,workload,environment,src_project,src_interconnect,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vlan_attachment,dst_vlan_attachment_state,dst_vlan_attachment_vlanid,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,bgp_peering_status
+org,workload,environment,src_project,src_interconnect,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vlan_attachment,dst_vlan_attachment_state,dst_vlan_attachment_vlanid,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,remote_bgp_peer_asn,bgp_peering_status
 ```
 
 ## Notes
@@ -151,8 +151,10 @@ org,workload,environment,src_project,src_interconnect,mapped,src_region,src_stat
 - Source dedicated interconnect MACsec status and key name are emitted in the canonical source field block when available
 - Destination VLAN attachments and Cloud Routers are modeled as regional resources
 - Destination Cloud Router ASN is emitted in the canonical destination router field block when available
+- Remote BGP peer ASN is emitted in the canonical peer field block when available
 - Unmapped source interconnects are still included in the output
 - Mermaid output is a shared-node DAG and may intentionally collapse matching labels across workload, environment, source-project, interconnect, and destination-region layers
+- Mermaid renders `bgp_peering_status` as its own node between the interface and remote peer nodes
 - Mermaid labels use `<br>` line breaks so they render correctly in `https://mermaid.live`
 - Runtime discovery is performed with Google Compute API clients, not the `gcloud` CLI
 

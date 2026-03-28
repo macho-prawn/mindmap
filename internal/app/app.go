@@ -10,6 +10,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"netmap/internal/config"
@@ -22,6 +23,8 @@ const (
 	TypeInterconnect = "interconnect"
 	TypeVPN          = "vpn"
 )
+
+var brailleSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 type FileStore interface {
 	ReadFile(name string) ([]byte, error)
@@ -43,6 +46,7 @@ type App struct {
 	provider provider.DiscoveryProvider
 	now      func() time.Time
 	status   io.Writer
+	spinner  *statusSpinner
 }
 
 type Options struct {
@@ -106,13 +110,14 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return fmt.Errorf("vpn is not implemented yet for %s", scope)
 	}
 
-	a.statusf(
-		"⏳ Running netmap for org=%s workload=%s environment=%s source_project=%s",
+	a.startSpinner(
+		"Running netmap for org=%s workload=%s environment=%s source_project=%s",
 		opts.Org,
 		statusValueOrAll(opts.Workload),
 		statusValueOrAll(opts.Environment),
 		opts.SourceProject,
 	)
+	defer a.stopSpinner()
 
 	report, err := a.buildInterconnectReport(ctx, opts, targets)
 	if err != nil {
@@ -135,6 +140,7 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return fmt.Errorf("write output %q: %w", outputPath, err)
 	}
 
+	a.stopSpinner()
 	a.statusf("output file: %s", outputPath)
 	return nil
 }
@@ -221,6 +227,7 @@ Output:
   JSON output file:    netmap-interconnect-<src>-to-<dst>-<timestamp>.json
   Tree output file:    netmap-interconnect-<src>-to-<dst>-<timestamp>.tree.txt
   Org fanout output:   netmap-interconnect-<src>-to-<org>-all-<timestamp>.<ext>
+  A Braille spinner is shown on stderr while discovery is in progress.
   On success, the CLI prints: output file: <path>
   Mermaid output can be viewed in https://mermaid.live
 `) + "\n"
@@ -265,7 +272,7 @@ func (a *App) buildInterconnectReport(ctx context.Context, opts Options, targets
 		items = append(items, itemsForTarget(target, projectItems)...)
 
 		a.statusf(
-			"⏳ Completed org=%s workload=%s environment=%s project=%s",
+			"Completed org=%s workload=%s environment=%s project=%s",
 			target.Org,
 			target.Workload,
 			target.Environment,
@@ -328,7 +335,29 @@ func (a *App) statusf(format string, args ...any) {
 	if a.status == nil {
 		return
 	}
+	if a.spinner != nil {
+		a.spinner.Println(fmt.Sprintf(format, args...))
+		return
+	}
 	fmt.Fprintf(a.status, format+"\n", args...)
+}
+
+func (a *App) startSpinner(format string, args ...any) {
+	if a.status == nil {
+		return
+	}
+	a.stopSpinner()
+	spinner := newStatusSpinner(a.status, fmt.Sprintf(format, args...))
+	a.spinner = spinner
+	spinner.Start()
+}
+
+func (a *App) stopSpinner() {
+	if a.spinner == nil {
+		return
+	}
+	a.spinner.Stop()
+	a.spinner = nil
 }
 
 func buildMappingItems(srcProject, dstProject string, interconnects []model.DedicatedInterconnect, attachments []model.VLANAttachment, routers []model.CloudRouter, statuses map[string]model.RouterStatus) []model.MappingItem {
@@ -384,6 +413,7 @@ func buildMappingItems(srcProject, dstProject string, interconnects []model.Dedi
 					item.DstCloudRouterInterfaceIP = firstNonEmpty(peer.LocalIP, iface.IPRange)
 					item.RemoteBGPPeer = peer.Name
 					item.RemoteBGPPeerIP = peer.RemoteIP
+					item.RemoteBGPPeerASN = peer.PeerASN
 					item.BGPPeeringStatus = firstNonEmpty(peer.SessionState, "unknown")
 					items = append(items, item)
 				}
@@ -502,4 +532,101 @@ func uniqueProjectIDs(targets []config.ResolvedTarget) []string {
 		projectIDs = append(projectIDs, target.ProjectID)
 	}
 	return projectIDs
+}
+
+type statusSpinner struct {
+	writer   io.Writer
+	message  string
+	interval time.Duration
+	mu       sync.Mutex
+	stopCh   chan struct{}
+	doneCh   chan struct{}
+	frameIdx int
+	stopped  bool
+}
+
+func newStatusSpinner(writer io.Writer, message string) *statusSpinner {
+	return &statusSpinner{
+		writer:   writer,
+		message:  message,
+		interval: 100 * time.Millisecond,
+		stopCh:   make(chan struct{}),
+		doneCh:   make(chan struct{}),
+	}
+}
+
+func (s *statusSpinner) Start() {
+	if s == nil || s.writer == nil {
+		return
+	}
+
+	s.mu.Lock()
+	s.writeFrameLocked()
+	s.mu.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(s.interval)
+		defer ticker.Stop()
+		defer close(s.doneCh)
+
+		for {
+			select {
+			case <-ticker.C:
+				s.mu.Lock()
+				if s.stopped {
+					s.mu.Unlock()
+					return
+				}
+				s.frameIdx = (s.frameIdx + 1) % len(brailleSpinnerFrames)
+				s.writeFrameLocked()
+				s.mu.Unlock()
+			case <-s.stopCh:
+				return
+			}
+		}
+	}()
+}
+
+func (s *statusSpinner) Stop() {
+	if s == nil || s.writer == nil {
+		return
+	}
+
+	s.mu.Lock()
+	if s.stopped {
+		s.mu.Unlock()
+		return
+	}
+	s.stopped = true
+	close(s.stopCh)
+	s.clearLineLocked()
+	s.mu.Unlock()
+
+	<-s.doneCh
+}
+
+func (s *statusSpinner) Println(line string) {
+	if s == nil || s.writer == nil {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.stopped {
+		fmt.Fprintln(s.writer, line)
+		return
+	}
+
+	s.clearLineLocked()
+	fmt.Fprintln(s.writer, line)
+	s.writeFrameLocked()
+}
+
+func (s *statusSpinner) writeFrameLocked() {
+	fmt.Fprintf(s.writer, "\r\x1b[2K%s %s", brailleSpinnerFrames[s.frameIdx], s.message)
+}
+
+func (s *statusSpinner) clearLineLocked() {
+	fmt.Fprint(s.writer, "\r\x1b[2K")
 }

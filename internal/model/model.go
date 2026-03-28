@@ -33,6 +33,7 @@ type BGPPeer struct {
 	Interface    string
 	LocalIP      string
 	RemoteIP     string
+	PeerASN      string
 	SessionState string
 }
 
@@ -79,6 +80,7 @@ type MappingItem struct {
 	DstCloudRouterInterfaceIP string `json:"dst_cloud_router_interface_ip"`
 	RemoteBGPPeer             string `json:"remote_bgp_peer"`
 	RemoteBGPPeerIP           string `json:"remote_bgp_peer_ip"`
+	RemoteBGPPeerASN          string `json:"remote_bgp_peer_asn"`
 	BGPPeeringStatus          string `json:"bgp_peering_status"`
 }
 
