@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"mindmap/internal/app"
-	"mindmap/internal/provider"
+	"netmap/internal/app"
+	"netmap/internal/provider"
 )
 
 func main() {

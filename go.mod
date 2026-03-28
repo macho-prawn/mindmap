@@ -1,4 +1,4 @@
-module mindmap
+module netmap
 
 go 1.26
 

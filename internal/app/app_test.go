@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"mindmap/internal/model"
+	"netmap/internal/model"
 )
 
 type memoryFileStore struct {
@@ -117,6 +117,12 @@ func TestParseOptionsHelp(t *testing.T) {
 	if !opts.ShowHelp || !strings.Contains(opts.Usage, "Usage:") {
 		t.Fatalf("expected help usage, got %+v", opts)
 	}
+	if !strings.Contains(opts.Usage, "Selector Expansion:") {
+		t.Fatalf("expected selector expansion guidance, got %+v", opts)
+	}
+	if !strings.Contains(opts.Usage, "-o + -e        expands all workloads containing that environment") {
+		t.Fatalf("expected explicit -o + -e help text, got %+v", opts)
+	}
 }
 
 func TestRunWritesMermaidByDefault(t *testing.T) {
@@ -183,7 +189,7 @@ func TestRunWritesMermaidByDefault(t *testing.T) {
 		t.Fatalf("run app: %v", err)
 	}
 
-	data, ok := store.files["mindmap-interconnect-src-project-to-project-20260328T000000Z.mmd"]
+	data, ok := store.files["netmap-interconnect-src-project-to-project-20260328T000000Z.mmd"]
 	if !ok {
 		t.Fatalf("expected mermaid output file to be written")
 	}
@@ -192,13 +198,13 @@ func TestRunWritesMermaidByDefault(t *testing.T) {
 		t.Fatalf("unexpected mermaid content: %s", content)
 	}
 	statusOutput := status.String()
-	if !strings.Contains(statusOutput, "⏳ Running mindmap for org=dbc workload=native environment=dev source_project=src-project") {
+	if !strings.Contains(statusOutput, "⏳ Running netmap for org=dbc workload=native environment=dev source_project=src-project") {
 		t.Fatalf("expected start status message, got: %s", statusOutput)
 	}
 	if !strings.Contains(statusOutput, "⏳ Completed org=dbc workload=native environment=dev project=project") {
 		t.Fatalf("expected completion status message, got: %s", statusOutput)
 	}
-	if !strings.Contains(statusOutput, "output file: mindmap-interconnect-src-project-to-project-20260328T000000Z.mmd") {
+	if !strings.Contains(statusOutput, "output file: netmap-interconnect-src-project-to-project-20260328T000000Z.mmd") {
 		t.Fatalf("expected output file status message, got: %s", statusOutput)
 	}
 }
@@ -233,13 +239,13 @@ func TestRunSuppressesMermaidWhenFormatProvided(t *testing.T) {
 		t.Fatalf("run app: %v", err)
 	}
 
-	if _, ok := store.files["mindmap-interconnect-src-project-to-project-20260328T000000Z.mmd"]; ok {
+	if _, ok := store.files["netmap-interconnect-src-project-to-project-20260328T000000Z.mmd"]; ok {
 		t.Fatalf("unexpected mermaid output")
 	}
-	if _, ok := store.files["mindmap-interconnect-src-project-to-project-20260328T000000Z.json"]; !ok {
+	if _, ok := store.files["netmap-interconnect-src-project-to-project-20260328T000000Z.json"]; !ok {
 		t.Fatalf("expected json output")
 	}
-	if !strings.Contains(status.String(), "output file: mindmap-interconnect-src-project-to-project-20260328T000000Z.json") {
+	if !strings.Contains(status.String(), "output file: netmap-interconnect-src-project-to-project-20260328T000000Z.json") {
 		t.Fatalf("expected output status message, got: %s", status.String())
 	}
 }
@@ -344,12 +350,12 @@ func TestRunWithOrgFanoutWritesCombinedOutput(t *testing.T) {
 		t.Fatalf("run app: %v", err)
 	}
 
-	data, ok := store.files["mindmap-interconnect-src-project-to-dbc-all-20260328T000000Z.tree.txt"]
+	data, ok := store.files["netmap-interconnect-src-project-to-dbc-all-20260328T000000Z.tree.txt"]
 	if !ok {
 		t.Fatalf("expected combined output file to be written")
 	}
 	content := string(data)
-	if !strings.Contains(content, "project-a") || !strings.Contains(content, "project-b") {
+	if !strings.Contains(content, "workload: native") || !strings.Contains(content, "environment: dev") || !strings.Contains(content, "environment: prod") || !strings.Contains(content, "project-a") || !strings.Contains(content, "project-b") {
 		t.Fatalf("expected fanout destinations in tree output, got: %s", content)
 	}
 	statusOutput := status.String()
@@ -359,7 +365,7 @@ func TestRunWithOrgFanoutWritesCombinedOutput(t *testing.T) {
 	if !strings.Contains(statusOutput, "⏳ Completed org=dbc workload=native environment=prod project=project-b") {
 		t.Fatalf("expected prod completion status, got: %s", statusOutput)
 	}
-	if !strings.Contains(statusOutput, "output file: mindmap-interconnect-src-project-to-dbc-all-20260328T000000Z.tree.txt") {
+	if !strings.Contains(statusOutput, "output file: netmap-interconnect-src-project-to-dbc-all-20260328T000000Z.tree.txt") {
 		t.Fatalf("expected output status message, got: %s", statusOutput)
 	}
 }
@@ -518,6 +524,14 @@ func TestRunWithDuplicateProjectFanoutCachesDiscoveryAndLogsEachTuple(t *testing
 	}
 	if !strings.Contains(statusOutput, "⏳ Completed org=dbc workload=platform environment=dev project=shared-project") {
 		t.Fatalf("expected platform/dev completion status, got: %s", statusOutput)
+	}
+
+	data := string(store.files["netmap-interconnect-src-project-to-shared-project-20260328T000000Z.csv"])
+	if count := strings.Count(data, "dbc,native,dev,src-project"); count != 1 {
+		t.Fatalf("expected one native/dev csv branch, got %d in %s", count, data)
+	}
+	if count := strings.Count(data, "dbc,platform,dev,src-project"); count != 1 {
+		t.Fatalf("expected one platform/dev csv branch, got %d in %s", count, data)
 	}
 }
 

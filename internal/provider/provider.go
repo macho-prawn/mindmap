@@ -3,7 +3,7 @@ package provider
 import (
 	"context"
 
-	"mindmap/internal/model"
+	"netmap/internal/model"
 )
 
 type DiscoveryProvider interface {

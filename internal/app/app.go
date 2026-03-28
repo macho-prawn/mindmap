@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"mindmap/internal/config"
-	"mindmap/internal/model"
-	"mindmap/internal/provider"
-	"mindmap/internal/render"
+	"netmap/internal/config"
+	"netmap/internal/model"
+	"netmap/internal/provider"
+	"netmap/internal/render"
 )
 
 const (
@@ -107,7 +107,7 @@ func (a *App) Run(ctx context.Context, args []string) error {
 	}
 
 	a.statusf(
-		"⏳ Running mindmap for org=%s workload=%s environment=%s source_project=%s",
+		"⏳ Running netmap for org=%s workload=%s environment=%s source_project=%s",
 		opts.Org,
 		statusValueOrAll(opts.Workload),
 		statusValueOrAll(opts.Environment),
@@ -140,7 +140,7 @@ func (a *App) Run(ctx context.Context, args []string) error {
 }
 
 func ParseOptions(args []string) (Options, error) {
-	fs := flag.NewFlagSet("mindmap", flag.ContinueOnError)
+	fs := flag.NewFlagSet("netmap", flag.ContinueOnError)
 	var usage bytes.Buffer
 	fs.SetOutput(&usage)
 
@@ -194,18 +194,24 @@ func ParseOptions(args []string) (Options, error) {
 func usageText() string {
 	return strings.TrimSpace(`
 Usage:
-  mindmap -t interconnect -o <org> [-w <workload>] [-e <env>] -p <src-project> [-f <format>] [-config <path>]
-  mindmap -t vpn -o <org> [-w <workload>] [-e <env>] [-f <format>] [-config <path>]
+  netmap -t interconnect -o <org> [-w <workload>] [-e <env>] -p <src-project> [-f <format>] [-config <path>]
+  netmap -t vpn -o <org> [-w <workload>] [-e <env>] [-f <format>] [-config <path>]
 
 Flags:
   -t        mandatory, accepts interconnect or vpn
   -o        mandatory, org lookup key from the YAML config
-  -w        optional, workload lookup key from the YAML config
-  -e        optional, environment lookup key from the YAML config
+  -w        optional, workload selector; with -o and no -e, expands all environments in that workload
+  -e        optional, environment selector; with -o and no -w, expands all workloads containing that environment
   -p        mandatory only for -t interconnect; source project containing dedicated interconnects
   -f        optional, output format override: csv, tsv, json, or tree
   -config   optional, defaults to config.yaml
   -h        optional, print usage
+
+Selector Expansion:
+  -o only        expands all workloads and environments under that org
+  -o + -w        expands all environments under that workload
+  -o + -e        expands all workloads containing that environment
+  -o + -w + -e   resolves one exact workload/environment tuple
 `) + "\n"
 }
 
@@ -220,7 +226,6 @@ func (a *App) buildInterconnectReport(ctx context.Context, opts Options, targets
 
 	var items []model.MappingItem
 	itemsByProject := make(map[string][]model.MappingItem, len(targets))
-	appendedProjects := make(map[string]struct{}, len(targets))
 	for _, target := range targets {
 		projectItems, ok := itemsByProject[target.ProjectID]
 		if !ok {
@@ -246,10 +251,7 @@ func (a *App) buildInterconnectReport(ctx context.Context, opts Options, targets
 			itemsByProject[target.ProjectID] = projectItems
 		}
 
-		if _, ok := appendedProjects[target.ProjectID]; !ok {
-			items = append(items, projectItems...)
-			appendedProjects[target.ProjectID] = struct{}{}
-		}
+		items = append(items, itemsForTarget(target, projectItems)...)
 
 		a.statusf(
 			"⏳ Completed org=%s workload=%s environment=%s project=%s",
@@ -260,6 +262,18 @@ func (a *App) buildInterconnectReport(ctx context.Context, opts Options, targets
 		)
 	}
 	sort.Slice(items, func(i, j int) bool {
+		if items[i].Org != items[j].Org {
+			return items[i].Org < items[j].Org
+		}
+		if items[i].Workload != items[j].Workload {
+			return items[i].Workload < items[j].Workload
+		}
+		if items[i].Environment != items[j].Environment {
+			return items[i].Environment < items[j].Environment
+		}
+		if items[i].SrcProject != items[j].SrcProject {
+			return items[i].SrcProject < items[j].SrcProject
+		}
 		if items[i].SrcInterconnect != items[j].SrcInterconnect {
 			return items[i].SrcInterconnect < items[j].SrcInterconnect
 		}
@@ -379,8 +393,19 @@ func baseItem(srcProject, dstProject string, interconnect model.DedicatedInterco
 		DstVLANAttachmentState:  attachment.State,
 		DstVLANAttachmentVLANID: attachment.VLANID,
 		DstCloudRouter:          router.Name,
-		DstCloudRouterState:     firstNonEmpty(router.State, "unknown"),
 	}
+}
+
+func itemsForTarget(target config.ResolvedTarget, base []model.MappingItem) []model.MappingItem {
+	items := make([]model.MappingItem, 0, len(base))
+	for _, item := range base {
+		current := item
+		current.Org = target.Org
+		current.Workload = target.Workload
+		current.Environment = target.Environment
+		items = append(items, current)
+	}
+	return items
 }
 
 func interfacesForAttachment(router model.CloudRouter, attachment string) []model.RouterInterface {
@@ -420,7 +445,7 @@ func defaultOutputPath(format string, opts Options, report model.Report, ext, ti
 	if strings.TrimSpace(target) == "" {
 		target = opts.Org + "-all"
 	}
-	base := fmt.Sprintf("mindmap-interconnect-%s-to-%s-%s", opts.SourceProject, target, timestamp)
+	base := fmt.Sprintf("netmap-interconnect-%s-to-%s-%s", opts.SourceProject, target, timestamp)
 	if format == render.FormatJSON {
 		return base + ".json"
 	}

@@ -8,7 +8,7 @@ import (
 
 	compute "google.golang.org/api/compute/v1"
 
-	"mindmap/internal/model"
+	"netmap/internal/model"
 )
 
 type ComputeProvider struct {
@@ -72,7 +72,6 @@ func (p *ComputeProvider) ListCloudRouters(ctx context.Context, project string) 
 				current := model.CloudRouter{
 					Name:   router.Name,
 					Region: basename(router.Region),
-					State:  "unknown",
 				}
 				for _, iface := range router.Interfaces {
 					if iface == nil {
