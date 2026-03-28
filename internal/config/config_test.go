@@ -1,20 +1,13 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
 
 func TestParseAndResolve(t *testing.T) {
-	cfg, err := Parse([]byte(`
-org:
-  - name: dbc
-    workload:
-      - name: native
-        env:
-          - name: dev
-            project_id: project-dev
-`))
+	cfg, err := Parse([]byte(sampleConfig))
 	if err != nil {
 		t.Fatalf("parse config: %v", err)
 	}
@@ -28,16 +21,73 @@ org:
 	}
 }
 
+func TestResolveProjectsExpansion(t *testing.T) {
+	cfg, err := Parse([]byte(sampleConfig))
+	if err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+
+	tests := []struct {
+		name            string
+		org             string
+		workload        string
+		env             string
+		wantProjects    []string
+		wantErrContains string
+	}{
+		{
+			name:         "exact",
+			org:          "dbc",
+			workload:     "native",
+			env:          "dev",
+			wantProjects: []string{"project-dev"},
+		},
+		{
+			name:         "workload fanout",
+			org:          "dbc",
+			workload:     "native",
+			wantProjects: []string{"project-dev", "project-prod"},
+		},
+		{
+			name:         "org fanout",
+			org:          "dbc",
+			wantProjects: []string{"project-dev", "project-prod", "project-shared"},
+		},
+		{
+			name:         "env across workloads",
+			org:          "dbc",
+			env:          "dev",
+			wantProjects: []string{"project-dev", "project-shared"},
+		},
+		{
+			name:            "missing env",
+			org:             "dbc",
+			env:             "qa",
+			wantErrContains: "not found",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			projects, err := cfg.ResolveProjects(tc.org, tc.workload, tc.env)
+			if tc.wantErrContains != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErrContains) {
+					t.Fatalf("expected error containing %q, got %v", tc.wantErrContains, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolve projects: %v", err)
+			}
+			if !reflect.DeepEqual(projects, tc.wantProjects) {
+				t.Fatalf("expected %v, got %v", tc.wantProjects, projects)
+			}
+		})
+	}
+}
+
 func TestResolveErrors(t *testing.T) {
-	cfg, err := Parse([]byte(`
-org:
-  - name: dbc
-    workload:
-      - name: native
-        env:
-          - name: dev
-            project_id: project-dev
-`))
+	cfg, err := Parse([]byte(sampleConfig))
 	if err != nil {
 		t.Fatalf("parse config: %v", err)
 	}
@@ -63,3 +113,19 @@ func TestParseInvalidConfig(t *testing.T) {
 		t.Fatalf("expected parse error, got %v", err)
 	}
 }
+
+const sampleConfig = `
+org:
+  - name: dbc
+    workload:
+      - name: native
+        env:
+          - name: dev
+            project_id: project-dev
+          - name: prod
+            project_id: project-prod
+      - name: platform
+        env:
+          - name: dev
+            project_id: project-shared
+`

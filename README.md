@@ -24,6 +24,8 @@ org:
 
 `project_id` is the destination project.
 
+If `-o` is provided without `-w` and/or `-e`, every matching `project_id` under that org slice is included in the output.
+
 ## Build
 
 ```bash
@@ -73,23 +75,24 @@ GOCACHE=/tmp/go-build-cache /usr/local/go/bin/go run ./cmd/mindmap \
 
 - `-t` mandatory, accepts `interconnect` or `vpn`
 - `-o` mandatory, org lookup key from the YAML config
-- `-w` mandatory, workload lookup key from the YAML config
-- `-e` mandatory, environment lookup key from the YAML config
+- `-w` optional, workload lookup key from the YAML config
+- `-e` optional, environment lookup key from the YAML config
 - `-p` mandatory only for `-t interconnect`; source project containing dedicated interconnects
 - `-f` optional, output format override: `csv`, `tsv`, `json`, or `tree`
 - `-config` optional, defaults to `config.yaml`
+- `-h` optional, prints usage
 
 ## Behavior
 
 ### `-t interconnect`
 
-- Resolves the destination project from `-o`, `-w`, and `-e`
+- Resolves one destination project from `-o`, `-w`, and `-e`, or fans out to all matching org/workload/env projects when selectors are omitted
 - Lists dedicated interconnects in the source project
 - Fails if the source project has no dedicated interconnects
 - Lists destination VLAN attachments and Cloud Routers across regions
 - Maps router interfaces and BGP peers where available
-- Includes `region` in every destination-side record
-- Uses `src_region=global` for source dedicated interconnects
+- Uses a shared hierarchy in CSV/JSON/tree output rooted at `org -> src project -> dedicated interconnect -> dst project -> region`
+- Places `local_ip` next to `interface` and `remote_ip` next to `bgp_peer_name` in CSV/TSV output
 - Uses Google Cloud Go libraries and ADC instead of shelling out to `gcloud`
 
 ### `-t vpn`
@@ -102,20 +105,23 @@ GOCACHE=/tmp/go-build-cache /usr/local/go/bin/go run ./cmd/mindmap \
 If `-f` is not provided, the CLI writes a Mermaid file:
 
 ```text
-mindmap-interconnect-<src-project>-to-<dst-project>.mmd
+mindmap-interconnect-<src-project>-to-<dst-project>-<timestamp>.mmd
 ```
 
 If `-f` is provided, Mermaid is suppressed and only the selected format is written:
 
-- `-f csv` -> `mindmap-interconnect-<src>-to-<dst>.csv`
-- `-f tsv` -> `mindmap-interconnect-<src>-to-<dst>.tsv`
-- `-f json` -> `mindmap-interconnect-<src>-to-<dst>.json`
-- `-f tree` -> `mindmap-interconnect-<src>-to-<dst>.tree.txt`
+- Exact match mode:
+  - `-f csv` -> `mindmap-interconnect-<src>-to-<dst>-<timestamp>.csv`
+  - `-f tsv` -> `mindmap-interconnect-<src>-to-<dst>-<timestamp>.tsv`
+  - `-f json` -> `mindmap-interconnect-<src>-to-<dst>-<timestamp>.json`
+  - `-f tree` -> `mindmap-interconnect-<src>-to-<dst>-<timestamp>.tree.txt`
+- Org fanout mode:
+  - `mindmap-interconnect-<src>-to-<org>-all-<timestamp>.<ext>`
 
 ### CSV/TSV columns
 
 ```text
-src_project,src_interconnect,src_region,src_state,dst_project,region,attachment,attachment_state,router,interface,bgp_peer_name,local_ip,remote_ip,bgp_status,mapped
+org,src_project,src_interconnect,dst_project,region,src_region,src_state,attachment,attachment_state,router,interface,local_ip,bgp_peer_name,remote_ip,bgp_status,mapped
 ```
 
 ## Notes
@@ -123,6 +129,7 @@ src_project,src_interconnect,src_region,src_state,dst_project,region,attachment,
 - Source dedicated interconnects are modeled as global resources
 - Destination VLAN attachments and Cloud Routers are modeled as regional resources
 - Unmapped source interconnects are still included in the output
+- Mermaid output is rendered as a compact flowchart instead of a verbose field-by-field mind map
 - Runtime discovery is performed with Google Compute API clients, not the `gcloud` CLI
 
-<p align="center">Made with 🌈❤️</p>
+<p align="center"><sub>Vibe-Coded with &#x2665;&#xFE0E;</sub></p>

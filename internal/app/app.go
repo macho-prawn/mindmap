@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"mindmap/internal/config"
 	"mindmap/internal/model"
@@ -39,6 +41,7 @@ func (RealFileStore) WriteFile(name string, data []byte) error {
 type App struct {
 	files    FileStore
 	provider provider.DiscoveryProvider
+	now      func() time.Time
 }
 
 type Options struct {
@@ -49,6 +52,8 @@ type Options struct {
 	SourceProject string
 	Format        string
 	ConfigPath    string
+	ShowHelp      bool
+	Usage         string
 }
 
 func New(files FileStore, discovery provider.DiscoveryProvider) (*App, error) {
@@ -58,13 +63,21 @@ func New(files FileStore, discovery provider.DiscoveryProvider) (*App, error) {
 	if discovery == nil {
 		return nil, errors.New("provider is required")
 	}
-	return &App{files: files, provider: discovery}, nil
+	return &App{
+		files:    files,
+		provider: discovery,
+		now:      time.Now,
+	}, nil
 }
 
 func (a *App) Run(ctx context.Context, args []string) error {
 	opts, err := ParseOptions(args)
 	if err != nil {
 		return err
+	}
+	if opts.ShowHelp {
+		fmt.Fprint(os.Stdout, opts.Usage)
+		return nil
 	}
 
 	cfgData, err := a.files.ReadFile(opts.ConfigPath)
@@ -77,16 +90,20 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return err
 	}
 
-	dstProject, err := cfg.Resolve(opts.Org, opts.Workload, opts.Environment)
+	dstProjects, err := cfg.ResolveProjects(opts.Org, opts.Workload, opts.Environment)
 	if err != nil {
 		return err
 	}
 
 	if opts.Type == TypeVPN {
-		return fmt.Errorf("vpn is not implemented yet for destination project %q", dstProject)
+		scope := "selected destination projects"
+		if len(dstProjects) == 1 {
+			scope = fmt.Sprintf("destination project %q", dstProjects[0])
+		}
+		return fmt.Errorf("vpn is not implemented yet for %s", scope)
 	}
 
-	report, err := a.buildInterconnectReport(ctx, opts, dstProject)
+	report, err := a.buildInterconnectReport(ctx, opts, dstProjects)
 	if err != nil {
 		return err
 	}
@@ -101,7 +118,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return err
 	}
 
-	outputPath := defaultOutputPath(outputFormat, opts.SourceProject, dstProject, ext)
+	timestamp := a.now().UTC().Format("20060102T150405Z")
+	outputPath := defaultOutputPath(outputFormat, opts, report, ext, timestamp)
 	if err := a.files.WriteFile(outputPath, data); err != nil {
 		return fmt.Errorf("write output %q: %w", outputPath, err)
 	}
@@ -112,7 +130,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 
 func ParseOptions(args []string) (Options, error) {
 	fs := flag.NewFlagSet("mindmap", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	var usage bytes.Buffer
+	fs.SetOutput(&usage)
 
 	var opts Options
 	fs.StringVar(&opts.Type, "t", "", "resource type: interconnect or vpn")
@@ -122,8 +141,17 @@ func ParseOptions(args []string) (Options, error) {
 	fs.StringVar(&opts.SourceProject, "p", "", "source project for interconnect discovery")
 	fs.StringVar(&opts.Format, "f", "", "optional output format: csv, tsv, json, tree")
 	fs.StringVar(&opts.ConfigPath, "config", "config.yaml", "config path")
+	fs.Usage = func() {
+		fmt.Fprint(&usage, usageText())
+	}
 
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return Options{
+				ShowHelp: true,
+				Usage:    usage.String(),
+			}, nil
+		}
 		return Options{}, err
 	}
 
@@ -135,12 +163,6 @@ func ParseOptions(args []string) (Options, error) {
 	}
 	if strings.TrimSpace(opts.Org) == "" {
 		return Options{}, fmt.Errorf("missing mandatory parameter -o")
-	}
-	if strings.TrimSpace(opts.Workload) == "" {
-		return Options{}, fmt.Errorf("missing mandatory parameter -w")
-	}
-	if strings.TrimSpace(opts.Environment) == "" {
-		return Options{}, fmt.Errorf("missing mandatory parameter -e")
 	}
 	if opts.Type == TypeInterconnect && strings.TrimSpace(opts.SourceProject) == "" {
 		return Options{}, fmt.Errorf("missing mandatory parameter -p for -t interconnect")
@@ -158,7 +180,25 @@ func ParseOptions(args []string) (Options, error) {
 	return opts, nil
 }
 
-func (a *App) buildInterconnectReport(ctx context.Context, opts Options, dstProject string) (model.Report, error) {
+func usageText() string {
+	return strings.TrimSpace(`
+Usage:
+  mindmap -t interconnect -o <org> [-w <workload>] [-e <env>] -p <src-project> [-f <format>] [-config <path>]
+  mindmap -t vpn -o <org> [-w <workload>] [-e <env>] [-f <format>] [-config <path>]
+
+Flags:
+  -t        mandatory, accepts interconnect or vpn
+  -o        mandatory, org lookup key from the YAML config
+  -w        optional, workload lookup key from the YAML config
+  -e        optional, environment lookup key from the YAML config
+  -p        mandatory only for -t interconnect; source project containing dedicated interconnects
+  -f        optional, output format override: csv, tsv, json, or tree
+  -config   optional, defaults to config.yaml
+  -h        optional, print usage
+`) + "\n"
+}
+
+func (a *App) buildInterconnectReport(ctx context.Context, opts Options, dstProjects []string) (model.Report, error) {
 	interconnects, err := a.provider.ListDedicatedInterconnects(ctx, opts.SourceProject)
 	if err != nil {
 		return model.Report{}, err
@@ -167,28 +207,34 @@ func (a *App) buildInterconnectReport(ctx context.Context, opts Options, dstProj
 		return model.Report{}, fmt.Errorf("no dedicated interconnects found in source project %q", opts.SourceProject)
 	}
 
-	attachments, err := a.provider.ListVLANAttachments(ctx, dstProject)
-	if err != nil {
-		return model.Report{}, err
-	}
-	routers, err := a.provider.ListCloudRouters(ctx, dstProject)
-	if err != nil {
-		return model.Report{}, err
-	}
-
-	statusByRouter := make(map[string]model.RouterStatus, len(routers))
-	for _, router := range routers {
-		status, err := a.provider.GetCloudRouterStatus(ctx, dstProject, router.Region, router.Name)
+	var items []model.MappingItem
+	for _, dstProject := range dstProjects {
+		attachments, err := a.provider.ListVLANAttachments(ctx, dstProject)
 		if err != nil {
 			return model.Report{}, err
 		}
-		statusByRouter[routerKey(router.Region, router.Name)] = status
-	}
+		routers, err := a.provider.ListCloudRouters(ctx, dstProject)
+		if err != nil {
+			return model.Report{}, err
+		}
 
-	items := buildMappingItems(opts.SourceProject, dstProject, interconnects, attachments, routers, statusByRouter)
+		statusByRouter := make(map[string]model.RouterStatus, len(routers))
+		for _, router := range routers {
+			status, err := a.provider.GetCloudRouterStatus(ctx, dstProject, router.Region, router.Name)
+			if err != nil {
+				return model.Report{}, err
+			}
+			statusByRouter[routerKey(router.Region, router.Name)] = status
+		}
+
+		items = append(items, buildMappingItems(opts.SourceProject, dstProject, interconnects, attachments, routers, statusByRouter)...)
+	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].SrcInterconnect != items[j].SrcInterconnect {
 			return items[i].SrcInterconnect < items[j].SrcInterconnect
+		}
+		if items[i].DstProject != items[j].DstProject {
+			return items[i].DstProject < items[j].DstProject
 		}
 		if items[i].Region != items[j].Region {
 			return items[i].Region < items[j].Region
@@ -202,10 +248,14 @@ func (a *App) buildInterconnectReport(ctx context.Context, opts Options, dstProj
 		return items[i].Interface < items[j].Interface
 	})
 
+	destinationProject := ""
+	if len(dstProjects) == 1 {
+		destinationProject = dstProjects[0]
+	}
 	return model.Report{
 		Type:               opts.Type,
 		SourceProject:      opts.SourceProject,
-		DestinationProject: dstProject,
+		DestinationProject: destinationProject,
 		Selectors: model.Selectors{
 			Org:         opts.Org,
 			Workload:    opts.Workload,
@@ -322,8 +372,12 @@ func peersForRouter(router model.CloudRouter, status model.RouterStatus) map[str
 	return result
 }
 
-func defaultOutputPath(format, srcProject, dstProject, ext string) string {
-	base := fmt.Sprintf("mindmap-interconnect-%s-to-%s", srcProject, dstProject)
+func defaultOutputPath(format string, opts Options, report model.Report, ext, timestamp string) string {
+	target := report.DestinationProject
+	if strings.TrimSpace(target) == "" {
+		target = opts.Org + "-all"
+	}
+	base := fmt.Sprintf("mindmap-interconnect-%s-to-%s-%s", opts.SourceProject, target, timestamp)
 	if format == render.FormatJSON {
 		return base + ".json"
 	}
