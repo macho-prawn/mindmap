@@ -38,6 +38,7 @@ func sampleReport() model.Report {
 				DstCloudRouterInterfaceIP: "169.254.1.1",
 				RemoteBGPPeer:             "peer-1",
 				RemoteBGPPeerIP:           "169.254.1.2",
+				RemoteBGPPeerASN:          "64550",
 				BGPPeeringStatus:          "UP",
 			},
 			{
@@ -61,6 +62,7 @@ func sampleReport() model.Report {
 				DstCloudRouterInterfaceIP: "169.254.2.1",
 				RemoteBGPPeer:             "peer-2",
 				RemoteBGPPeerIP:           "169.254.2.2",
+				RemoteBGPPeerASN:          "64551",
 				BGPPeeringStatus:          "UP",
 			},
 			{
@@ -95,7 +97,7 @@ func TestRenderCSV(t *testing.T) {
 	if !strings.Contains(content, "org,workload,environment,src_project,src_interconnect,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vlan_attachment") {
 		t.Fatalf("unexpected csv header order: %s", content)
 	}
-	if !strings.Contains(content, "dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,bgp_peering_status") {
+	if !strings.Contains(content, "dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,remote_bgp_peer_asn,bgp_peering_status") {
 		t.Fatalf("unexpected csv tail column order: %s", content)
 	}
 }
@@ -123,6 +125,9 @@ func TestRenderJSON(t *testing.T) {
 	}
 	if !strings.Contains(content, `"dst_cloud_router_asn": "64512"`) {
 		t.Fatalf("expected router asn in json output, got: %s", content)
+	}
+	if !strings.Contains(content, `"remote_bgp_peer_asn": "64550"`) {
+		t.Fatalf("expected peer asn in json output, got: %s", content)
 	}
 	if !strings.Contains(content, `"src_interconnects"`) || !strings.Contains(content, `"dst_projects"`) || !strings.Contains(content, `"dst_regions"`) {
 		t.Fatalf("expected hierarchical destination data, got: %s", content)
@@ -152,6 +157,9 @@ func TestRenderTree(t *testing.T) {
 	}
 	if !strings.Contains(content, "dst_cloud_router: router-1 [dst_cloud_router_asn: 64512]") {
 		t.Fatalf("expected router asn in tree output: %s", content)
+	}
+	if !strings.Contains(content, "remote_bgp_peer: peer-1 [remote_bgp_peer_ip: 169.254.1.2, remote_bgp_peer_asn: 64550, bgp_peering_status: UP]") {
+		t.Fatalf("expected peer asn in tree output: %s", content)
 	}
 	if !strings.Contains(content, "dst_vlan_attachment: attachment-1 [dst_vlan_attachment_state: ACTIVE, dst_vlan_attachment_vlanid: 101]") || !strings.Contains(content, "dst_project: dst-b [mapped: false]") {
 		t.Fatalf("unexpected tree output: %s", content)
@@ -190,6 +198,15 @@ func TestRenderMermaidCollapsesSharedProjectAndRegion(t *testing.T) {
 	}
 	if !strings.Contains(content, "dst_cloud_router_asn: 64512") {
 		t.Fatalf("expected router asn in mermaid output, got %s", content)
+	}
+	if !strings.Contains(content, "remote_bgp_peer_asn: 64550") {
+		t.Fatalf("expected peer asn in mermaid output, got %s", content)
+	}
+	if !strings.Contains(content, "bgp_peering_status: UP") {
+		t.Fatalf("expected dedicated bgp status node in mermaid output, got %s", content)
+	}
+	if strings.Contains(content, "remote_bgp_peer: peer-1<br>remote_bgp_peer_ip: 169.254.1.2<br>bgp_peering_status: UP") {
+		t.Fatalf("expected bgp status to be outside the remote peer node, got %s", content)
 	}
 	if countSubstring(content, "dst_project: dst-a") != 1 {
 		t.Fatalf("expected one shared dst_project node, got %d in %s", countSubstring(content, "dst_project: dst-a"), content)

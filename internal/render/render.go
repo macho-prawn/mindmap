@@ -41,6 +41,7 @@ var separatedHeader = []string{
 	"dst_cloud_router_interface_ip",
 	"remote_bgp_peer",
 	"remote_bgp_peer_ip",
+	"remote_bgp_peer_asn",
 	"bgp_peering_status",
 }
 
@@ -94,6 +95,7 @@ func renderSeparated(report model.Report, delimiter rune) ([]byte, error) {
 			item.DstCloudRouterInterfaceIP,
 			item.RemoteBGPPeer,
 			item.RemoteBGPPeerIP,
+			item.RemoteBGPPeerASN,
 			item.BGPPeeringStatus,
 		}
 		if err := writer.Write(record); err != nil {
@@ -153,7 +155,8 @@ func renderMermaid(report model.Report) []byte {
 		attachmentID := mermaidID("attachment-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVLANAttachment)
 		routerID := mermaidID("router-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVLANAttachment + "-" + item.DstCloudRouter)
 		interfaceID := mermaidID("interface-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVLANAttachment + "-" + item.DstCloudRouter + "-" + item.DstCloudRouterInterface)
-		peerID := mermaidID("peer-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVLANAttachment + "-" + item.DstCloudRouter + "-" + item.DstCloudRouterInterface + "-" + item.RemoteBGPPeer + "-" + item.RemoteBGPPeerIP)
+		statusID := mermaidID("bgp-status-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVLANAttachment + "-" + item.DstCloudRouter + "-" + item.DstCloudRouterInterface + "-" + item.RemoteBGPPeer + "-" + item.RemoteBGPPeerIP + "-" + item.BGPPeeringStatus)
+		peerID := mermaidID("peer-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVLANAttachment + "-" + item.DstCloudRouter + "-" + item.DstCloudRouterInterface + "-" + item.RemoteBGPPeer + "-" + item.RemoteBGPPeerIP + "-" + item.RemoteBGPPeerASN)
 
 		linkIfMissing(&b, seen, dstProjectID, regionID, destinationRegionItemLabel(item))
 		linkIfMissing(&b, seen, regionID, attachmentID, attachmentItemLabel(item))
@@ -161,12 +164,16 @@ func renderMermaid(report model.Report) []byte {
 		if hasInterfaceItem(item) {
 			linkIfMissing(&b, seen, routerID, interfaceID, interfaceItemLabel(item))
 		}
-		if hasPeerItem(item) {
+		if hasStatusItem(item) {
 			parentID := routerID
 			if hasInterfaceItem(item) {
 				parentID = interfaceID
 			}
-			linkIfMissing(&b, seen, parentID, peerID, peerItemLabel(item))
+			linkIfMissing(&b, seen, parentID, statusID, peeringStatusItemLabel(item))
+			parentID = statusID
+			if hasPeerItem(item) {
+				linkIfMissing(&b, seen, parentID, peerID, peerItemLabel(item))
+			}
 		}
 	}
 	return []byte(b.String())
@@ -228,6 +235,7 @@ type jsonAttachmentNode struct {
 	DstCloudRouterInterfaceIP string `json:"dst_cloud_router_interface_ip"`
 	RemoteBGPPeer             string `json:"remote_bgp_peer"`
 	RemoteBGPPeerIP           string `json:"remote_bgp_peer_ip"`
+	RemoteBGPPeerASN          string `json:"remote_bgp_peer_asn"`
 	BGPPeeringStatus          string `json:"bgp_peering_status"`
 }
 
@@ -286,6 +294,7 @@ type attachmentGroup struct {
 	DstCloudRouterInterfaceIP string
 	RemoteBGPPeer             string
 	RemoteBGPPeerIP           string
+	RemoteBGPPeerASN          string
 	BGPPeeringStatus          string
 }
 
@@ -352,6 +361,7 @@ func buildJSONInterconnects(groups []interconnectGroup) []jsonInterconnectNode {
 						DstCloudRouterInterfaceIP: valueOrUnknown(attachment.DstCloudRouterInterfaceIP),
 						RemoteBGPPeer:             valueOrUnknown(attachment.RemoteBGPPeer),
 						RemoteBGPPeerIP:           valueOrUnknown(attachment.RemoteBGPPeerIP),
+						RemoteBGPPeerASN:          valueOrUnknown(attachment.RemoteBGPPeerASN),
 						BGPPeeringStatus:          valueOrUnknown(attachment.BGPPeeringStatus),
 					})
 				}
@@ -517,6 +527,7 @@ func groupRegions(items []model.MappingItem) []regionGroup {
 				DstCloudRouterInterfaceIP: item.DstCloudRouterInterfaceIP,
 				RemoteBGPPeer:             item.RemoteBGPPeer,
 				RemoteBGPPeerIP:           item.RemoteBGPPeerIP,
+				RemoteBGPPeerASN:          item.RemoteBGPPeerASN,
 				BGPPeeringStatus:          item.BGPPeeringStatus,
 			})
 		}
@@ -650,10 +661,11 @@ func drawTreeAttachment(b *strings.Builder, attachment attachmentGroup, indent s
 	)
 	fmt.Fprintf(
 		b,
-		"%s        `-- remote_bgp_peer: %s [remote_bgp_peer_ip: %s, bgp_peering_status: %s]\n",
+		"%s        `-- remote_bgp_peer: %s [remote_bgp_peer_ip: %s, remote_bgp_peer_asn: %s, bgp_peering_status: %s]\n",
 		childIndent,
 		valueOrUnknown(attachment.RemoteBGPPeer),
 		valueOrUnknown(attachment.RemoteBGPPeerIP),
+		valueOrUnknown(attachment.RemoteBGPPeerASN),
 		valueOrUnknown(attachment.BGPPeeringStatus),
 	)
 }
@@ -719,11 +731,15 @@ func interfaceItemLabel(item model.MappingItem) string {
 
 func peerItemLabel(item model.MappingItem) string {
 	return fmt.Sprintf(
-		"remote_bgp_peer: %s<br>remote_bgp_peer_ip: %s<br>bgp_peering_status: %s",
+		"remote_bgp_peer: %s<br>remote_bgp_peer_ip: %s<br>remote_bgp_peer_asn: %s",
 		valueOrUnknown(item.RemoteBGPPeer),
 		valueOrUnknown(item.RemoteBGPPeerIP),
-		valueOrUnknown(item.BGPPeeringStatus),
+		valueOrUnknown(item.RemoteBGPPeerASN),
 	)
+}
+
+func peeringStatusItemLabel(item model.MappingItem) string {
+	return "bgp_peering_status: " + valueOrUnknown(item.BGPPeeringStatus)
 }
 
 func destinationProjectNodeLabel(dst destinationGroup) string {
@@ -765,11 +781,15 @@ func interfaceNodeLabel(attachment attachmentGroup) string {
 
 func peerNodeLabel(attachment attachmentGroup) string {
 	return fmt.Sprintf(
-		"remote_bgp_peer: %s<br>remote_bgp_peer_ip: %s<br>bgp_peering_status: %s",
+		"remote_bgp_peer: %s<br>remote_bgp_peer_ip: %s<br>remote_bgp_peer_asn: %s",
 		valueOrUnknown(attachment.RemoteBGPPeer),
 		valueOrUnknown(attachment.RemoteBGPPeerIP),
-		valueOrUnknown(attachment.BGPPeeringStatus),
+		valueOrUnknown(attachment.RemoteBGPPeerASN),
 	)
+}
+
+func peeringStatusNodeLabel(attachment attachmentGroup) string {
+	return "bgp_peering_status: " + valueOrUnknown(attachment.BGPPeeringStatus)
 }
 
 func hasInterface(attachment attachmentGroup) bool {
@@ -777,7 +797,7 @@ func hasInterface(attachment attachmentGroup) bool {
 }
 
 func hasPeer(attachment attachmentGroup) bool {
-	return strings.TrimSpace(attachment.RemoteBGPPeer) != "" || strings.TrimSpace(attachment.RemoteBGPPeerIP) != "" || strings.TrimSpace(attachment.BGPPeeringStatus) != ""
+	return strings.TrimSpace(attachment.RemoteBGPPeer) != "" || strings.TrimSpace(attachment.RemoteBGPPeerIP) != "" || strings.TrimSpace(attachment.RemoteBGPPeerASN) != ""
 }
 
 func hasInterfaceItem(item model.MappingItem) bool {
@@ -785,7 +805,11 @@ func hasInterfaceItem(item model.MappingItem) bool {
 }
 
 func hasPeerItem(item model.MappingItem) bool {
-	return strings.TrimSpace(item.RemoteBGPPeer) != "" || strings.TrimSpace(item.RemoteBGPPeerIP) != "" || strings.TrimSpace(item.BGPPeeringStatus) != ""
+	return strings.TrimSpace(item.RemoteBGPPeer) != "" || strings.TrimSpace(item.RemoteBGPPeerIP) != "" || strings.TrimSpace(item.RemoteBGPPeerASN) != ""
+}
+
+func hasStatusItem(item model.MappingItem) bool {
+	return strings.TrimSpace(item.BGPPeeringStatus) != "" || hasPeerItem(item)
 }
 
 func defineMermaidNode(b *strings.Builder, seen map[string]struct{}, id, label string) {

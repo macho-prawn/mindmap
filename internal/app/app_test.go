@@ -132,6 +132,9 @@ func TestParseOptionsHelp(t *testing.T) {
 	if !strings.Contains(opts.Usage, "output file: <path>") {
 		t.Fatalf("expected output path guidance, got %+v", opts)
 	}
+	if !strings.Contains(opts.Usage, "Braille spinner") {
+		t.Fatalf("expected spinner guidance, got %+v", opts)
+	}
 }
 
 func TestRunWritesMermaidByDefault(t *testing.T) {
@@ -168,6 +171,7 @@ func TestRunWritesMermaidByDefault(t *testing.T) {
 				Interface:    "if-1",
 				LocalIP:      "169.254.1.1",
 				RemoteIP:     "169.254.1.2",
+				PeerASN:      "64550",
 				SessionState: "UP",
 			}},
 		}},
@@ -221,11 +225,20 @@ func TestRunWritesMermaidByDefault(t *testing.T) {
 	if !strings.Contains(content, "dst_cloud_router_asn: 64512") {
 		t.Fatalf("unexpected mermaid content: %s", content)
 	}
-	statusOutput := status.String()
-	if !strings.Contains(statusOutput, "⏳ Running netmap for org=dbc workload=native environment=dev source_project=src-project") {
-		t.Fatalf("expected start status message, got: %s", statusOutput)
+	if !strings.Contains(content, "remote_bgp_peer_asn: 64550") {
+		t.Fatalf("unexpected mermaid content: %s", content)
 	}
-	if !strings.Contains(statusOutput, "⏳ Completed org=dbc workload=native environment=dev project=project") {
+	if !strings.Contains(content, "bgp_peering_status: UP") {
+		t.Fatalf("expected dedicated bgp status node in mermaid output: %s", content)
+	}
+	statusOutput := status.String()
+	if !containsBrailleSpinner(statusOutput) || !strings.Contains(statusOutput, "Running netmap for org=dbc workload=native environment=dev source_project=src-project") {
+		t.Fatalf("expected spinner status message, got: %s", statusOutput)
+	}
+	if strings.Contains(statusOutput, "⏳") {
+		t.Fatalf("unexpected hourglass status output, got: %s", statusOutput)
+	}
+	if !strings.Contains(statusOutput, "Completed org=dbc workload=native environment=dev project=project") {
 		t.Fatalf("expected completion status message, got: %s", statusOutput)
 	}
 	if !strings.Contains(statusOutput, "output file: netmap-interconnect-src-project-to-project-20260328T000000Z.mmd") {
@@ -318,6 +331,7 @@ func TestRunWithOrgFanoutWritesCombinedOutput(t *testing.T) {
 					Interface:    "if-a",
 					LocalIP:      "169.254.10.1",
 					RemoteIP:     "169.254.10.2",
+					PeerASN:      "64561",
 					SessionState: "UP",
 				}},
 			}},
@@ -335,6 +349,7 @@ func TestRunWithOrgFanoutWritesCombinedOutput(t *testing.T) {
 					Interface:    "if-b",
 					LocalIP:      "169.254.20.1",
 					RemoteIP:     "169.254.20.2",
+					PeerASN:      "64562",
 					SessionState: "UP",
 				}},
 			}},
@@ -390,10 +405,10 @@ func TestRunWithOrgFanoutWritesCombinedOutput(t *testing.T) {
 		t.Fatalf("expected fanout destinations in tree output, got: %s", content)
 	}
 	statusOutput := status.String()
-	if !strings.Contains(statusOutput, "⏳ Completed org=dbc workload=native environment=dev project=project-a") {
+	if !strings.Contains(statusOutput, "Completed org=dbc workload=native environment=dev project=project-a") {
 		t.Fatalf("expected dev completion status, got: %s", statusOutput)
 	}
-	if !strings.Contains(statusOutput, "⏳ Completed org=dbc workload=native environment=prod project=project-b") {
+	if !strings.Contains(statusOutput, "Completed org=dbc workload=native environment=prod project=project-b") {
 		t.Fatalf("expected prod completion status, got: %s", statusOutput)
 	}
 	if !strings.Contains(statusOutput, "output file: netmap-interconnect-src-project-to-dbc-all-20260328T000000Z.tree.txt") {
@@ -514,6 +529,7 @@ func TestRunWithDuplicateProjectFanoutCachesDiscoveryAndLogsEachTuple(t *testing
 					Interface:    "if-shared",
 					LocalIP:      "169.254.30.1",
 					RemoteIP:     "169.254.30.2",
+					PeerASN:      "64560",
 					SessionState: "UP",
 				}},
 			}},
@@ -566,10 +582,10 @@ func TestRunWithDuplicateProjectFanoutCachesDiscoveryAndLogsEachTuple(t *testing
 	}
 
 	statusOutput := status.String()
-	if !strings.Contains(statusOutput, "⏳ Completed org=dbc workload=native environment=dev project=shared-project") {
+	if !strings.Contains(statusOutput, "Completed org=dbc workload=native environment=dev project=shared-project") {
 		t.Fatalf("expected native/dev completion status, got: %s", statusOutput)
 	}
-	if !strings.Contains(statusOutput, "⏳ Completed org=dbc workload=platform environment=dev project=shared-project") {
+	if !strings.Contains(statusOutput, "Completed org=dbc workload=platform environment=dev project=shared-project") {
 		t.Fatalf("expected platform/dev completion status, got: %s", statusOutput)
 	}
 
@@ -580,9 +596,18 @@ func TestRunWithDuplicateProjectFanoutCachesDiscoveryAndLogsEachTuple(t *testing
 	if count := strings.Count(data, "dbc,platform,dev,src-project"); count != 1 {
 		t.Fatalf("expected one platform/dev csv branch, got %d in %s", count, data)
 	}
-	if !strings.Contains(data, ",global,ACTIVE,true,shared-key,shared-project,us-central1,attachment-shared,ACTIVE,,router-shared,64540,") {
+	if !strings.Contains(data, ",global,ACTIVE,true,shared-key,shared-project,us-central1,attachment-shared,ACTIVE,,router-shared,64540,if-shared,169.254.30.1,peer-shared,169.254.30.2,64560,UP") {
 		t.Fatalf("expected source macsec fields in csv output, got %s", data)
 	}
+}
+
+func containsBrailleSpinner(value string) bool {
+	for _, frame := range brailleSpinnerFrames {
+		if strings.Contains(value, frame) {
+			return true
+		}
+	}
+	return false
 }
 
 const validConfig = `

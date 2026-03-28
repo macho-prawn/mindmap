@@ -68,3 +68,12 @@ func TestFormatASN(t *testing.T) {
 		t.Fatalf("expected 64512, got %q", got)
 	}
 }
+
+func TestFormatOptionalInt(t *testing.T) {
+	if got := formatOptionalInt(0); got != "" {
+		t.Fatalf("expected empty string for zero value, got %q", got)
+	}
+	if got := formatOptionalInt(64599); got != "64599" {
+		t.Fatalf("expected 64599, got %q", got)
+	}
+}

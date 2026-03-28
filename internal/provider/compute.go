@@ -96,6 +96,7 @@ func (p *ComputeProvider) ListCloudRouters(ctx context.Context, project string) 
 						Interface:    peer.InterfaceName,
 						LocalIP:      peer.IpAddress,
 						RemoteIP:     peer.PeerIpAddress,
+						PeerASN:      formatOptionalInt(peer.PeerAsn),
 						SessionState: "",
 					})
 				}
@@ -157,6 +158,13 @@ func formatASN(bgp *compute.RouterBgp) string {
 		return ""
 	}
 	return strconv.FormatInt(bgp.Asn, 10)
+}
+
+func formatOptionalInt(value int64) string {
+	if value <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(value, 10)
 }
 
 func selectActiveMacsecKeyName(now time.Time, macsec *compute.InterconnectMacsec) string {
