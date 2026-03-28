@@ -7,8 +7,10 @@ type Selectors struct {
 }
 
 type DedicatedInterconnect struct {
-	Name  string
-	State string
+	Name          string
+	State         string
+	MacsecEnabled bool
+	MacsecKeyName string
 }
 
 type VLANAttachment struct {
@@ -63,6 +65,8 @@ type MappingItem struct {
 	Mapped                    bool   `json:"mapped"`
 	SrcRegion                 string `json:"src_region"`
 	SrcState                  string `json:"src_state"`
+	SrcMacsecEnabled          bool   `json:"src_macsec_enabled"`
+	SrcMacsecKeyName          string `json:"src_macsec_keyname"`
 	DstProject                string `json:"dst_project"`
 	DstRegion                 string `json:"dst_region"`
 	DstVLANAttachment         string `json:"dst_vlan_attachment"`

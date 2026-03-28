@@ -132,7 +132,12 @@ func TestRunWritesMermaidByDefault(t *testing.T) {
 		},
 	}
 	app, err := New(store, mockProvider{
-		interconnects: []model.DedicatedInterconnect{{Name: "ic-1", State: "ACTIVE"}},
+		interconnects: []model.DedicatedInterconnect{{
+			Name:          "ic-1",
+			State:         "ACTIVE",
+			MacsecEnabled: true,
+			MacsecKeyName: "macsec-key-a",
+		}},
 		attachments: []model.VLANAttachment{{
 			Name:         "attachment-1",
 			Region:       "us-central1",
@@ -197,6 +202,9 @@ func TestRunWritesMermaidByDefault(t *testing.T) {
 	if !strings.Contains(content, "flowchart LR") || !strings.Contains(content, "remote_bgp_peer: peer-1") || !strings.Contains(content, "dst_cloud_router_interface: if-1") {
 		t.Fatalf("unexpected mermaid content: %s", content)
 	}
+	if !strings.Contains(content, "src_macsec_enabled: true") || !strings.Contains(content, "src_macsec_keyname: macsec-key-a") {
+		t.Fatalf("unexpected mermaid content: %s", content)
+	}
 	statusOutput := status.String()
 	if !strings.Contains(statusOutput, "⏳ Running netmap for org=dbc workload=native environment=dev source_project=src-project") {
 		t.Fatalf("expected start status message, got: %s", statusOutput)
@@ -216,7 +224,12 @@ func TestRunSuppressesMermaidWhenFormatProvided(t *testing.T) {
 		},
 	}
 	app, err := New(store, mockProvider{
-		interconnects: []model.DedicatedInterconnect{{Name: "ic-1", State: "ACTIVE"}},
+		interconnects: []model.DedicatedInterconnect{{
+			Name:          "ic-1",
+			State:         "ACTIVE",
+			MacsecEnabled: true,
+			MacsecKeyName: "macsec-key-a",
+		}},
 	})
 	if err != nil {
 		t.Fatalf("new app: %v", err)
@@ -257,7 +270,7 @@ func TestRunWithOrgFanoutWritesCombinedOutput(t *testing.T) {
 		},
 	}
 	app, err := New(store, mockProvider{
-		interconnects: []model.DedicatedInterconnect{{Name: "ic-1", State: "ACTIVE"}},
+		interconnects: []model.DedicatedInterconnect{{Name: "ic-1", State: "ACTIVE", MacsecEnabled: true, MacsecKeyName: "fanout-key"}},
 		attachmentsByProject: map[string][]model.VLANAttachment{
 			"project-a": {{
 				Name:         "attachment-a",
@@ -398,7 +411,7 @@ func TestBuildMappingItemsIncludesGlobalSrcRegionAndUnmapped(t *testing.T) {
 		"dst-project",
 		[]model.DedicatedInterconnect{
 			{Name: "mapped", State: "ACTIVE"},
-			{Name: "unmapped", State: "DOWN"},
+			{Name: "unmapped", State: "DOWN", MacsecEnabled: true, MacsecKeyName: "macsec-key-unmapped"},
 		},
 		[]model.VLANAttachment{{
 			Name:         "attachment-1",
@@ -425,11 +438,18 @@ func TestBuildMappingItemsIncludesGlobalSrcRegionAndUnmapped(t *testing.T) {
 	if items[0].SrcRegion != "global" && items[1].SrcRegion != "global" {
 		t.Fatalf("expected src_region=global in all items")
 	}
+	foundMacsec := false
 	foundUnmapped := false
 	for _, item := range items {
+		if item.SrcInterconnect == "unmapped" && item.SrcMacsecEnabled && item.SrcMacsecKeyName == "macsec-key-unmapped" {
+			foundMacsec = true
+		}
 		if item.SrcInterconnect == "unmapped" && !item.Mapped {
 			foundUnmapped = true
 		}
+	}
+	if !foundMacsec {
+		t.Fatalf("expected source macsec fields to propagate")
 	}
 	if !foundUnmapped {
 		t.Fatalf("expected unmapped interconnect item")
@@ -443,7 +463,7 @@ func TestRunWithDuplicateProjectFanoutCachesDiscoveryAndLogsEachTuple(t *testing
 		},
 	}
 	provider := mockProvider{
-		interconnects: []model.DedicatedInterconnect{{Name: "ic-1", State: "ACTIVE"}},
+		interconnects: []model.DedicatedInterconnect{{Name: "ic-1", State: "ACTIVE", MacsecEnabled: true, MacsecKeyName: "shared-key"}},
 		attachmentsByProject: map[string][]model.VLANAttachment{
 			"shared-project": {{
 				Name:         "attachment-shared",
@@ -532,6 +552,9 @@ func TestRunWithDuplicateProjectFanoutCachesDiscoveryAndLogsEachTuple(t *testing
 	}
 	if count := strings.Count(data, "dbc,platform,dev,src-project"); count != 1 {
 		t.Fatalf("expected one platform/dev csv branch, got %d in %s", count, data)
+	}
+	if !strings.Contains(data, ",global,ACTIVE,true,shared-key,shared-project,") {
+		t.Fatalf("expected source macsec fields in csv output, got %s", data)
 	}
 }
 

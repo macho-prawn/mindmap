@@ -336,12 +336,14 @@ func buildMappingItems(srcProject, dstProject string, interconnects []model.Dedi
 		matches := attachmentsByInterconnect[interconnect.Name]
 		if len(matches) == 0 {
 			items = append(items, model.MappingItem{
-				SrcProject:      srcProject,
-				SrcInterconnect: interconnect.Name,
-				SrcRegion:       "global",
-				SrcState:        interconnect.State,
-				DstProject:      dstProject,
-				Mapped:          false,
+				SrcProject:       srcProject,
+				SrcInterconnect:  interconnect.Name,
+				SrcRegion:        "global",
+				SrcState:         interconnect.State,
+				SrcMacsecEnabled: interconnect.MacsecEnabled,
+				SrcMacsecKeyName: interconnect.MacsecKeyName,
+				DstProject:       dstProject,
+				Mapped:           false,
 			})
 			continue
 		}
@@ -387,6 +389,8 @@ func baseItem(srcProject, dstProject string, interconnect model.DedicatedInterco
 		Mapped:                  true,
 		SrcRegion:               "global",
 		SrcState:                interconnect.State,
+		SrcMacsecEnabled:        interconnect.MacsecEnabled,
+		SrcMacsecKeyName:        interconnect.MacsecKeyName,
 		DstProject:              dstProject,
 		DstRegion:               attachment.Region,
 		DstVLANAttachment:       attachment.Name,

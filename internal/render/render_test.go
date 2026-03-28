@@ -25,6 +25,8 @@ func sampleReport() model.Report {
 				Mapped:                    true,
 				SrcRegion:                 "global",
 				SrcState:                  "ACTIVE",
+				SrcMacsecEnabled:          true,
+				SrcMacsecKeyName:          "macsec-key-a",
 				DstProject:                "dst-a",
 				DstRegion:                 "us-central1",
 				DstVLANAttachment:         "attachment-1",
@@ -46,6 +48,7 @@ func sampleReport() model.Report {
 				Mapped:                    true,
 				SrcRegion:                 "global",
 				SrcState:                  "ACTIVE",
+				SrcMacsecEnabled:          false,
 				DstProject:                "dst-a",
 				DstRegion:                 "us-central1",
 				DstVLANAttachment:         "attachment-2",
@@ -59,15 +62,17 @@ func sampleReport() model.Report {
 				BGPPeeringStatus:          "UP",
 			},
 			{
-				Org:             "dbc",
-				Workload:        "platform",
-				Environment:     "dev",
-				SrcProject:      "src",
-				SrcInterconnect: "ic-1",
-				Mapped:          false,
-				SrcRegion:       "global",
-				SrcState:        "ACTIVE",
-				DstProject:      "dst-b",
+				Org:              "dbc",
+				Workload:         "platform",
+				Environment:      "dev",
+				SrcProject:       "src",
+				SrcInterconnect:  "ic-1",
+				Mapped:           false,
+				SrcRegion:        "global",
+				SrcState:         "ACTIVE",
+				SrcMacsecEnabled: true,
+				SrcMacsecKeyName: "macsec-key-platform",
+				DstProject:       "dst-b",
 			},
 		},
 	}
@@ -85,7 +90,7 @@ func TestRenderCSV(t *testing.T) {
 	if strings.Contains(content, "dst_cloud_router_state") {
 		t.Fatalf("unexpected router state column in csv: %s", content)
 	}
-	if !strings.Contains(content, "org,workload,environment,src_project,src_interconnect,mapped,src_region,src_state,dst_project,dst_region") {
+	if !strings.Contains(content, "org,workload,environment,src_project,src_interconnect,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region") {
 		t.Fatalf("unexpected csv header order: %s", content)
 	}
 	if !strings.Contains(content, "dst_cloud_router,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,bgp_peering_status") {
@@ -111,6 +116,9 @@ func TestRenderJSON(t *testing.T) {
 	if !strings.Contains(content, `"name": "native"`) || !strings.Contains(content, `"name": "platform"`) {
 		t.Fatalf("expected workload hierarchy, got: %s", content)
 	}
+	if !strings.Contains(content, `"src_macsec_enabled": true`) || !strings.Contains(content, `"src_macsec_keyname": "macsec-key-a"`) {
+		t.Fatalf("expected source macsec data in json output, got: %s", content)
+	}
 	if !strings.Contains(content, `"src_interconnects"`) || !strings.Contains(content, `"dst_projects"`) || !strings.Contains(content, `"dst_regions"`) {
 		t.Fatalf("expected hierarchical destination data, got: %s", content)
 	}
@@ -133,6 +141,9 @@ func TestRenderTree(t *testing.T) {
 	}
 	if !strings.Contains(content, "`-- workload: platform") {
 		t.Fatalf("expected second workload branch, got: %s", content)
+	}
+	if !strings.Contains(content, "src_macsec_enabled: true, src_macsec_keyname: macsec-key-a") {
+		t.Fatalf("expected source macsec data in tree output: %s", content)
 	}
 	if !strings.Contains(content, "dst_vlan_attachment: attachment-1 [dst_vlan_attachment_state: ACTIVE, dst_vlan_attachment_vlanid: 101]") || !strings.Contains(content, "dst_project: dst-b [mapped: false]") {
 		t.Fatalf("unexpected tree output: %s", content)
@@ -160,6 +171,9 @@ func TestRenderMermaidCollapsesSharedProjectAndRegion(t *testing.T) {
 	if !strings.Contains(content, "dst_region: us-central1") || !strings.Contains(content, "dst_vlan_attachment: attachment-1") || !strings.Contains(content, "remote_bgp_peer: peer-1") {
 		t.Fatalf("expected destination fanout details, got %s", content)
 	}
+	if !strings.Contains(content, "src_macsec_enabled: true") || !strings.Contains(content, "src_macsec_keyname: macsec-key-a") {
+		t.Fatalf("expected source macsec data in mermaid output, got %s", content)
+	}
 	if countSubstring(content, "dst_project: dst-a") != 1 {
 		t.Fatalf("expected one shared dst_project node, got %d in %s", countSubstring(content, "dst_project: dst-a"), content)
 	}
@@ -185,6 +199,8 @@ func TestRenderMermaidKeepsDestinationScopeUniquePerTuple(t *testing.T) {
 				Mapped:                  true,
 				SrcRegion:               "global",
 				SrcState:                "ACTIVE",
+				SrcMacsecEnabled:        true,
+				SrcMacsecKeyName:        "shared-key",
 				DstProject:              "shared-project",
 				DstRegion:               "us-central1",
 				DstVLANAttachment:       "attachment-native",
@@ -201,6 +217,8 @@ func TestRenderMermaidKeepsDestinationScopeUniquePerTuple(t *testing.T) {
 				Mapped:                  true,
 				SrcRegion:               "global",
 				SrcState:                "ACTIVE",
+				SrcMacsecEnabled:        true,
+				SrcMacsecKeyName:        "shared-key",
 				DstProject:              "shared-project",
 				DstRegion:               "us-central1",
 				DstVLANAttachment:       "attachment-platform",

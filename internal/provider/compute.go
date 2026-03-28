@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	compute "google.golang.org/api/compute/v1"
 
@@ -29,8 +30,10 @@ func (p *ComputeProvider) ListDedicatedInterconnects(ctx context.Context, projec
 	if err := call.Pages(ctx, func(page *compute.InterconnectList) error {
 		for _, interconnect := range page.Items {
 			items = append(items, model.DedicatedInterconnect{
-				Name:  interconnect.Name,
-				State: firstNonEmpty(interconnect.OperationalStatus, interconnect.State, "unknown"),
+				Name:          interconnect.Name,
+				State:         firstNonEmpty(interconnect.OperationalStatus, interconnect.State, "unknown"),
+				MacsecEnabled: interconnect.MacsecEnabled,
+				MacsecKeyName: selectActiveMacsecKeyName(time.Now().UTC(), interconnect.Macsec),
 			})
 		}
 		return nil
@@ -146,6 +149,74 @@ func formatVLANID(value int64) string {
 		return ""
 	}
 	return strconv.FormatInt(value, 10)
+}
+
+func selectActiveMacsecKeyName(now time.Time, macsec *compute.InterconnectMacsec) string {
+	if macsec == nil || len(macsec.PreSharedKeys) == 0 {
+		return ""
+	}
+
+	var activeName string
+	var activeStart time.Time
+	var haveActive bool
+	var latestName string
+	var latestStart time.Time
+	var haveLatest bool
+
+	for _, key := range macsec.PreSharedKeys {
+		if key == nil || strings.TrimSpace(key.Name) == "" {
+			continue
+		}
+
+		startTime, ok := parseRFC3339(key.StartTime)
+		if !haveLatest || compareStartTime(startTime, ok, latestStart, haveLatest) > 0 {
+			latestName = key.Name
+			latestStart = startTime
+			haveLatest = ok || !haveLatest
+		}
+
+		if ok && startTime.After(now) {
+			continue
+		}
+		if !haveActive || compareStartTime(startTime, ok, activeStart, haveActive) > 0 {
+			activeName = key.Name
+			activeStart = startTime
+			haveActive = ok || !haveActive
+		}
+	}
+
+	if strings.TrimSpace(activeName) != "" {
+		return activeName
+	}
+	return latestName
+}
+
+func parseRFC3339(value string) (time.Time, bool) {
+	if strings.TrimSpace(value) == "" {
+		return time.Time{}, false
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed.UTC(), true
+}
+
+func compareStartTime(current time.Time, currentOK bool, best time.Time, bestOK bool) int {
+	switch {
+	case currentOK && !bestOK:
+		return 1
+	case !currentOK && bestOK:
+		return -1
+	case !currentOK && !bestOK:
+		return 0
+	case current.After(best):
+		return 1
+	case current.Before(best):
+		return -1
+	default:
+		return 0
+	}
 }
 
 func firstNonEmpty(values ...string) string {

@@ -132,12 +132,13 @@ If `-f` is provided, Mermaid is suppressed and only the selected format is writt
 ### CSV/TSV columns
 
 ```text
-org,workload,environment,src_project,src_interconnect,mapped,src_region,src_state,dst_project,dst_region,dst_vlan_attachment,dst_vlan_attachment_state,dst_vlan_attachment_vlanid,dst_cloud_router,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,bgp_peering_status
+org,workload,environment,src_project,src_interconnect,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vlan_attachment,dst_vlan_attachment_state,dst_vlan_attachment_vlanid,dst_cloud_router,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,bgp_peering_status
 ```
 
 ## Notes
 
 - Source dedicated interconnects are modeled as global resources
+- Source dedicated interconnect MACsec status and key name are emitted in the canonical source field block when available
 - Destination VLAN attachments and Cloud Routers are modeled as regional resources
 - Unmapped source interconnects are still included in the output
 - Mermaid output preserves `org -> workload -> environment` branch uniqueness even when different branches resolve to the same destination project or region labels

@@ -28,6 +28,8 @@ var separatedHeader = []string{
 	"mapped",
 	"src_region",
 	"src_state",
+	"src_macsec_enabled",
+	"src_macsec_keyname",
 	"dst_project",
 	"dst_region",
 	"dst_vlan_attachment",
@@ -78,6 +80,8 @@ func renderSeparated(report model.Report, delimiter rune) ([]byte, error) {
 			fmt.Sprintf("%t", item.Mapped),
 			item.SrcRegion,
 			item.SrcState,
+			fmt.Sprintf("%t", item.SrcMacsecEnabled),
+			item.SrcMacsecKeyName,
 			item.DstProject,
 			item.DstRegion,
 			item.DstVLANAttachment,
@@ -170,11 +174,13 @@ type jsonSourceNode struct {
 }
 
 type jsonInterconnectNode struct {
-	SrcInterconnect string                `json:"src_interconnect"`
-	Mapped          bool                  `json:"mapped"`
-	SrcRegion       string                `json:"src_region"`
-	SrcState        string                `json:"src_state"`
-	DstProjects     []jsonDestinationNode `json:"dst_projects,omitempty"`
+	SrcInterconnect  string                `json:"src_interconnect"`
+	Mapped           bool                  `json:"mapped"`
+	SrcRegion        string                `json:"src_region"`
+	SrcState         string                `json:"src_state"`
+	SrcMacsecEnabled bool                  `json:"src_macsec_enabled"`
+	SrcMacsecKeyName string                `json:"src_macsec_keyname"`
+	DstProjects      []jsonDestinationNode `json:"dst_projects,omitempty"`
 }
 
 type jsonDestinationNode struct {
@@ -225,11 +231,13 @@ type sourceGroup struct {
 }
 
 type interconnectGroup struct {
-	SrcInterconnect string
-	Mapped          bool
-	SrcRegion       string
-	SrcState        string
-	DstProjects     []destinationGroup
+	SrcInterconnect  string
+	Mapped           bool
+	SrcRegion        string
+	SrcState         string
+	SrcMacsecEnabled bool
+	SrcMacsecKeyName string
+	DstProjects      []destinationGroup
 }
 
 type destinationGroup struct {
@@ -296,10 +304,12 @@ func buildJSONInterconnects(groups []interconnectGroup) []jsonInterconnectNode {
 	result := make([]jsonInterconnectNode, 0, len(groups))
 	for _, interconnect := range groups {
 		node := jsonInterconnectNode{
-			SrcInterconnect: valueOrUnknown(interconnect.SrcInterconnect),
-			Mapped:          interconnect.Mapped,
-			SrcRegion:       valueOrUnknown(interconnect.SrcRegion),
-			SrcState:        valueOrUnknown(interconnect.SrcState),
+			SrcInterconnect:  valueOrUnknown(interconnect.SrcInterconnect),
+			Mapped:           interconnect.Mapped,
+			SrcRegion:        valueOrUnknown(interconnect.SrcRegion),
+			SrcState:         valueOrUnknown(interconnect.SrcState),
+			SrcMacsecEnabled: interconnect.SrcMacsecEnabled,
+			SrcMacsecKeyName: valueOrUnknown(interconnect.SrcMacsecKeyName),
 		}
 		for _, dst := range interconnect.DstProjects {
 			dstNode := jsonDestinationNode{
@@ -410,10 +420,12 @@ func groupInterconnects(items []model.MappingItem) []interconnectGroup {
 			continue
 		}
 		group := interconnectGroup{
-			SrcInterconnect: name,
-			SrcRegion:       groupItems[0].SrcRegion,
-			SrcState:        groupItems[0].SrcState,
-			DstProjects:     groupDestinations(groupItems),
+			SrcInterconnect:  name,
+			SrcRegion:        groupItems[0].SrcRegion,
+			SrcState:         groupItems[0].SrcState,
+			SrcMacsecEnabled: groupItems[0].SrcMacsecEnabled,
+			SrcMacsecKeyName: groupItems[0].SrcMacsecKeyName,
+			DstProjects:      groupDestinations(groupItems),
 		}
 		for _, item := range groupItems {
 			if item.Mapped {
@@ -538,13 +550,15 @@ func drawTreeInterconnect(b *strings.Builder, interconnect interconnectGroup, in
 	}
 	fmt.Fprintf(
 		b,
-		"%s%s src_interconnect: %s [mapped: %t, src_region: %s, src_state: %s]\n",
+		"%s%s src_interconnect: %s [mapped: %t, src_region: %s, src_state: %s, src_macsec_enabled: %t, src_macsec_keyname: %s]\n",
 		indent,
 		prefix,
 		valueOrUnknown(interconnect.SrcInterconnect),
 		interconnect.Mapped,
 		valueOrUnknown(interconnect.SrcRegion),
 		valueOrUnknown(interconnect.SrcState),
+		interconnect.SrcMacsecEnabled,
+		valueOrUnknown(interconnect.SrcMacsecKeyName),
 	)
 	for idx, dst := range interconnect.DstProjects {
 		drawTreeDestination(b, dst, childIndent, idx == len(interconnect.DstProjects)-1)
@@ -700,10 +714,12 @@ func sharedMermaidNodes(interconnects []interconnectGroup) mermaidCollapse {
 
 func interconnectNodeLabel(interconnect interconnectGroup) string {
 	return fmt.Sprintf(
-		"src_interconnect: %s\\nsrc_region: %s\\nsrc_state: %s",
+		"src_interconnect: %s\\nsrc_region: %s\\nsrc_state: %s\\nsrc_macsec_enabled: %t\\nsrc_macsec_keyname: %s",
 		valueOrUnknown(interconnect.SrcInterconnect),
 		valueOrUnknown(interconnect.SrcRegion),
 		valueOrUnknown(interconnect.SrcState),
+		interconnect.SrcMacsecEnabled,
+		valueOrUnknown(interconnect.SrcMacsecKeyName),
 	)
 }
 
