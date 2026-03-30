@@ -16,6 +16,7 @@ type DedicatedInterconnect struct {
 type VLANAttachment struct {
 	Name         string
 	Region       string
+	Network      string
 	State        string
 	Interconnect string
 	Router       string
@@ -40,6 +41,7 @@ type BGPPeer struct {
 type CloudRouter struct {
 	Name       string
 	Region     string
+	Network    string
 	ASN        string
 	Interfaces []RouterInterface
 	BGPPeers   []BGPPeer
@@ -71,6 +73,7 @@ type MappingItem struct {
 	SrcMacsecKeyName          string `json:"src_macsec_keyname"`
 	DstProject                string `json:"dst_project"`
 	DstRegion                 string `json:"dst_region"`
+	DstVPC                    string `json:"dst_vpc"`
 	DstVLANAttachment         string `json:"dst_vlan_attachment"`
 	DstVLANAttachmentState    string `json:"dst_vlan_attachment_state"`
 	DstVLANAttachmentVLANID   string `json:"dst_vlan_attachment_vlanid"`

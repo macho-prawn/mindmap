@@ -129,11 +129,11 @@ func TestParseOptionsHelp(t *testing.T) {
 	if !strings.Contains(opts.Usage, "Mermaid output can be viewed in https://mermaid.live") {
 		t.Fatalf("expected mermaid.live guidance, got %+v", opts)
 	}
-	if !strings.Contains(opts.Usage, "output file: <path>") {
-		t.Fatalf("expected output path guidance, got %+v", opts)
+	if !strings.Contains(opts.Usage, "Output: <path>") || !strings.Contains(opts.Usage, "Total Time: <duration>") {
+		t.Fatalf("expected final summary guidance, got %+v", opts)
 	}
-	if !strings.Contains(opts.Usage, "Braille spinner") {
-		t.Fatalf("expected spinner guidance, got %+v", opts)
+	if !strings.Contains(opts.Usage, "2-column task table") {
+		t.Fatalf("expected task table guidance, got %+v", opts)
 	}
 }
 
@@ -153,6 +153,7 @@ func TestRunWritesMermaidByDefault(t *testing.T) {
 		attachments: []model.VLANAttachment{{
 			Name:         "attachment-1",
 			Region:       "us-central1",
+			Network:      "vpc-a",
 			State:        "ACTIVE",
 			Interconnect: "ic-1",
 			Router:       "router-1",
@@ -225,6 +226,9 @@ func TestRunWritesMermaidByDefault(t *testing.T) {
 	if !strings.Contains(content, "dst_cloud_router_asn: 64512") {
 		t.Fatalf("unexpected mermaid content: %s", content)
 	}
+	if !strings.Contains(content, "dst_vpc: vpc-a") {
+		t.Fatalf("unexpected mermaid content: %s", content)
+	}
 	if !strings.Contains(content, "remote_bgp_peer_asn: 64550") {
 		t.Fatalf("unexpected mermaid content: %s", content)
 	}
@@ -232,17 +236,20 @@ func TestRunWritesMermaidByDefault(t *testing.T) {
 		t.Fatalf("expected dedicated bgp status node in mermaid output: %s", content)
 	}
 	statusOutput := status.String()
-	if !containsBrailleSpinner(statusOutput) || !strings.Contains(statusOutput, "Running netmap for org=dbc workload=native environment=dev source_project=src-project") {
-		t.Fatalf("expected spinner status message, got: %s", statusOutput)
+	if !containsBrailleSpinner(statusOutput) || !strings.Contains(statusOutput, "Running org=dbc workload=native environment=dev project=project") {
+		t.Fatalf("expected running task row, got: %s", statusOutput)
 	}
 	if strings.Contains(statusOutput, "⏳") {
 		t.Fatalf("unexpected hourglass status output, got: %s", statusOutput)
 	}
-	if !strings.Contains(statusOutput, "Completed org=dbc workload=native environment=dev project=project") {
-		t.Fatalf("expected completion status message, got: %s", statusOutput)
+	if !strings.Contains(statusOutput, "✅ Completed org=dbc workload=native environment=dev project=project") {
+		t.Fatalf("expected completed task row, got: %s", statusOutput)
 	}
-	if !strings.Contains(statusOutput, "output file: netmap-interconnect-src-project-to-project-20260328T000000Z.mmd") {
-		t.Fatalf("expected output file status message, got: %s", statusOutput)
+	if !strings.Contains(statusOutput, "Output: netmap-interconnect-src-project-to-project-20260328T000000Z.mmd") || !strings.Contains(statusOutput, "Total Time: 0s") {
+		t.Fatalf("expected final summary row, got: %s", statusOutput)
+	}
+	if !containsTaskTable(statusOutput) {
+		t.Fatalf("expected ascii task table, got: %s", statusOutput)
 	}
 }
 
@@ -287,8 +294,8 @@ func TestRunSuppressesMermaidWhenFormatProvided(t *testing.T) {
 	if _, ok := store.files["netmap-interconnect-src-project-to-project-20260328T000000Z.json"]; !ok {
 		t.Fatalf("expected json output")
 	}
-	if !strings.Contains(status.String(), "output file: netmap-interconnect-src-project-to-project-20260328T000000Z.json") {
-		t.Fatalf("expected output status message, got: %s", status.String())
+	if !strings.Contains(status.String(), "Output: netmap-interconnect-src-project-to-project-20260328T000000Z.json") || !strings.Contains(status.String(), "Total Time: 0s") {
+		t.Fatalf("expected final summary row, got: %s", status.String())
 	}
 }
 
@@ -304,6 +311,7 @@ func TestRunWithOrgFanoutWritesCombinedOutput(t *testing.T) {
 			"project-a": {{
 				Name:         "attachment-a",
 				Region:       "us-central1",
+				Network:      "vpc-a",
 				State:        "ACTIVE",
 				Interconnect: "ic-1",
 				Router:       "router-a",
@@ -311,6 +319,7 @@ func TestRunWithOrgFanoutWritesCombinedOutput(t *testing.T) {
 			"project-b": {{
 				Name:         "attachment-b",
 				Region:       "europe-west1",
+				Network:      "vpc-b",
 				State:        "ACTIVE",
 				Interconnect: "ic-1",
 				Router:       "router-b",
@@ -405,14 +414,14 @@ func TestRunWithOrgFanoutWritesCombinedOutput(t *testing.T) {
 		t.Fatalf("expected fanout destinations in tree output, got: %s", content)
 	}
 	statusOutput := status.String()
-	if !strings.Contains(statusOutput, "Completed org=dbc workload=native environment=dev project=project-a") {
+	if !strings.Contains(statusOutput, "✅ Completed org=dbc workload=native environment=dev project=project-a") {
 		t.Fatalf("expected dev completion status, got: %s", statusOutput)
 	}
-	if !strings.Contains(statusOutput, "Completed org=dbc workload=native environment=prod project=project-b") {
+	if !strings.Contains(statusOutput, "✅ Completed org=dbc workload=native environment=prod project=project-b") {
 		t.Fatalf("expected prod completion status, got: %s", statusOutput)
 	}
-	if !strings.Contains(statusOutput, "output file: netmap-interconnect-src-project-to-dbc-all-20260328T000000Z.tree.txt") {
-		t.Fatalf("expected output status message, got: %s", statusOutput)
+	if !strings.Contains(statusOutput, "Output: netmap-interconnect-src-project-to-dbc-all-20260328T000000Z.tree.txt") || !strings.Contains(statusOutput, "Total Time: 0s") {
+		t.Fatalf("expected final summary row, got: %s", statusOutput)
 	}
 }
 
@@ -449,6 +458,7 @@ func TestBuildMappingItemsIncludesGlobalSrcRegionAndUnmapped(t *testing.T) {
 		[]model.VLANAttachment{{
 			Name:         "attachment-1",
 			Region:       "europe-west1",
+			Network:      "vpc-a",
 			State:        "ACTIVE",
 			Interconnect: "mapped",
 			Router:       "router-1",
@@ -474,10 +484,14 @@ func TestBuildMappingItemsIncludesGlobalSrcRegionAndUnmapped(t *testing.T) {
 	}
 	foundMacsec := false
 	foundRouterASN := false
+	foundVPC := false
 	foundUnmapped := false
 	for _, item := range items {
 		if item.SrcInterconnect == "mapped" && item.DstCloudRouterASN == "64530" {
 			foundRouterASN = true
+		}
+		if item.SrcInterconnect == "mapped" && item.DstVPC == "vpc-a" {
+			foundVPC = true
 		}
 		if item.SrcInterconnect == "unmapped" && item.SrcMacsecEnabled && item.SrcMacsecKeyName == "macsec-key-unmapped" {
 			foundMacsec = true
@@ -491,6 +505,9 @@ func TestBuildMappingItemsIncludesGlobalSrcRegionAndUnmapped(t *testing.T) {
 	}
 	if !foundRouterASN {
 		t.Fatalf("expected router asn to propagate")
+	}
+	if !foundVPC {
+		t.Fatalf("expected vpc to propagate")
 	}
 	if !foundUnmapped {
 		t.Fatalf("expected unmapped interconnect item")
@@ -509,6 +526,7 @@ func TestRunWithDuplicateProjectFanoutCachesDiscoveryAndLogsEachTuple(t *testing
 			"shared-project": {{
 				Name:         "attachment-shared",
 				Region:       "us-central1",
+				Network:      "shared-vpc",
 				State:        "ACTIVE",
 				Interconnect: "ic-1",
 				Router:       "router-shared",
@@ -582,11 +600,14 @@ func TestRunWithDuplicateProjectFanoutCachesDiscoveryAndLogsEachTuple(t *testing
 	}
 
 	statusOutput := status.String()
-	if !strings.Contains(statusOutput, "Completed org=dbc workload=native environment=dev project=shared-project") {
+	if !strings.Contains(statusOutput, "✅ Completed org=dbc workload=native environment=dev project=shared-project") {
 		t.Fatalf("expected native/dev completion status, got: %s", statusOutput)
 	}
-	if !strings.Contains(statusOutput, "Completed org=dbc workload=platform environment=dev project=shared-project") {
+	if !strings.Contains(statusOutput, "✅ Completed org=dbc workload=platform environment=dev project=shared-project") {
 		t.Fatalf("expected platform/dev completion status, got: %s", statusOutput)
+	}
+	if !strings.Contains(statusOutput, "Output: netmap-interconnect-src-project-to-shared-project-20260328T000000Z.csv") || !strings.Contains(statusOutput, "Total Time: 0s") {
+		t.Fatalf("expected final summary row, got: %s", statusOutput)
 	}
 
 	data := string(store.files["netmap-interconnect-src-project-to-shared-project-20260328T000000Z.csv"])
@@ -596,7 +617,7 @@ func TestRunWithDuplicateProjectFanoutCachesDiscoveryAndLogsEachTuple(t *testing
 	if count := strings.Count(data, "dbc,platform,dev,src-project"); count != 1 {
 		t.Fatalf("expected one platform/dev csv branch, got %d in %s", count, data)
 	}
-	if !strings.Contains(data, ",global,ACTIVE,true,shared-key,shared-project,us-central1,attachment-shared,ACTIVE,,router-shared,64540,if-shared,169.254.30.1,peer-shared,169.254.30.2,64560,UP") {
+	if !strings.Contains(data, ",global,ACTIVE,true,shared-key,shared-project,us-central1,shared-vpc,attachment-shared,ACTIVE,,router-shared,64540,if-shared,169.254.30.1,peer-shared,169.254.30.2,64560,UP") {
 		t.Fatalf("expected source macsec fields in csv output, got %s", data)
 	}
 }
@@ -608,6 +629,10 @@ func containsBrailleSpinner(value string) bool {
 		}
 	}
 	return false
+}
+
+func containsTaskTable(value string) bool {
+	return strings.Contains(value, "+-") && strings.Contains(value, "|")
 }
 
 const validConfig = `

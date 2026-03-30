@@ -73,9 +73,10 @@ func (p *ComputeProvider) ListCloudRouters(ctx context.Context, project string) 
 		for _, scoped := range page.Items {
 			for _, router := range scoped.Routers {
 				current := model.CloudRouter{
-					Name:   router.Name,
-					Region: basename(router.Region),
-					ASN:    formatASN(router.Bgp),
+					Name:    router.Name,
+					Region:  basename(router.Region),
+					Network: basename(router.Network),
+					ASN:     formatASN(router.Bgp),
 				}
 				for _, iface := range router.Interfaces {
 					if iface == nil {

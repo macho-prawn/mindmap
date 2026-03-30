@@ -29,6 +29,7 @@ func sampleReport() model.Report {
 				SrcMacsecKeyName:          "macsec-key-a",
 				DstProject:                "dst-a",
 				DstRegion:                 "us-central1",
+				DstVPC:                    "vpc-a",
 				DstVLANAttachment:         "attachment-1",
 				DstVLANAttachmentState:    "ACTIVE",
 				DstVLANAttachmentVLANID:   "101",
@@ -53,6 +54,7 @@ func sampleReport() model.Report {
 				SrcMacsecEnabled:          false,
 				DstProject:                "dst-a",
 				DstRegion:                 "us-central1",
+				DstVPC:                    "vpc-a",
 				DstVLANAttachment:         "attachment-2",
 				DstVLANAttachmentState:    "ACTIVE",
 				DstVLANAttachmentVLANID:   "102",
@@ -94,7 +96,7 @@ func TestRenderCSV(t *testing.T) {
 	if strings.Contains(content, "dst_cloud_router_state") {
 		t.Fatalf("unexpected router state column in csv: %s", content)
 	}
-	if !strings.Contains(content, "org,workload,environment,src_project,src_interconnect,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vlan_attachment") {
+	if !strings.Contains(content, "org,workload,environment,src_project,src_interconnect,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vpc,dst_vlan_attachment") {
 		t.Fatalf("unexpected csv header order: %s", content)
 	}
 	if !strings.Contains(content, "dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,remote_bgp_peer_asn,bgp_peering_status") {
@@ -125,6 +127,9 @@ func TestRenderJSON(t *testing.T) {
 	}
 	if !strings.Contains(content, `"dst_cloud_router_asn": "64512"`) {
 		t.Fatalf("expected router asn in json output, got: %s", content)
+	}
+	if !strings.Contains(content, `"dst_vpc": "vpc-a"`) {
+		t.Fatalf("expected vpc in json output, got: %s", content)
 	}
 	if !strings.Contains(content, `"remote_bgp_peer_asn": "64550"`) {
 		t.Fatalf("expected peer asn in json output, got: %s", content)
@@ -161,7 +166,7 @@ func TestRenderTree(t *testing.T) {
 	if !strings.Contains(content, "remote_bgp_peer: peer-1 [remote_bgp_peer_ip: 169.254.1.2, remote_bgp_peer_asn: 64550, bgp_peering_status: UP]") {
 		t.Fatalf("expected peer asn in tree output: %s", content)
 	}
-	if !strings.Contains(content, "dst_vlan_attachment: attachment-1 [dst_vlan_attachment_state: ACTIVE, dst_vlan_attachment_vlanid: 101]") || !strings.Contains(content, "dst_project: dst-b [mapped: false]") {
+	if !strings.Contains(content, "dst_vlan_attachment: attachment-1 [dst_vpc: vpc-a, dst_vlan_attachment_state: ACTIVE, dst_vlan_attachment_vlanid: 101]") || !strings.Contains(content, "dst_project: dst-b [mapped: false]") {
 		t.Fatalf("unexpected tree output: %s", content)
 	}
 }
@@ -199,6 +204,9 @@ func TestRenderMermaidCollapsesSharedProjectAndRegion(t *testing.T) {
 	if !strings.Contains(content, "dst_cloud_router_asn: 64512") {
 		t.Fatalf("expected router asn in mermaid output, got %s", content)
 	}
+	if !strings.Contains(content, "dst_vpc: vpc-a") {
+		t.Fatalf("expected vpc in mermaid output, got %s", content)
+	}
 	if !strings.Contains(content, "remote_bgp_peer_asn: 64550") {
 		t.Fatalf("expected peer asn in mermaid output, got %s", content)
 	}
@@ -213,6 +221,9 @@ func TestRenderMermaidCollapsesSharedProjectAndRegion(t *testing.T) {
 	}
 	if countSubstring(content, "dst_region: us-central1") != 1 {
 		t.Fatalf("expected one shared dst_region node, got %d in %s", countSubstring(content, "dst_region: us-central1"), content)
+	}
+	if countSubstring(content, "dst_vpc: vpc-a") != 1 {
+		t.Fatalf("expected one shared dst_vpc label, got %d in %s", countSubstring(content, "dst_vpc: vpc-a"), content)
 	}
 	if countSubstring(content, "environment: dev") != 1 {
 		t.Fatalf("expected one shared environment node, got %d in %s", countSubstring(content, "environment: dev"), content)
@@ -246,6 +257,7 @@ func TestRenderMermaidCollapsesAcrossWorkloadsEnvironmentsAndDestinations(t *tes
 				SrcMacsecKeyName:        "shared-key",
 				DstProject:              "project-a",
 				DstRegion:               "us-central1",
+				DstVPC:                  "shared-vpc",
 				DstVLANAttachment:       "attachment-native",
 				DstVLANAttachmentState:  "ACTIVE",
 				DstVLANAttachmentVLANID: "100",
@@ -265,6 +277,7 @@ func TestRenderMermaidCollapsesAcrossWorkloadsEnvironmentsAndDestinations(t *tes
 				SrcMacsecKeyName:        "shared-key",
 				DstProject:              "project-b",
 				DstRegion:               "us-central1",
+				DstVPC:                  "shared-vpc",
 				DstVLANAttachment:       "attachment-platform-dev",
 				DstVLANAttachmentState:  "ACTIVE",
 				DstVLANAttachmentVLANID: "200",
@@ -284,6 +297,7 @@ func TestRenderMermaidCollapsesAcrossWorkloadsEnvironmentsAndDestinations(t *tes
 				SrcMacsecKeyName:        "shared-key",
 				DstProject:              "project-c",
 				DstRegion:               "us-central1",
+				DstVPC:                  "shared-vpc",
 				DstVLANAttachment:       "attachment-native-prod",
 				DstVLANAttachmentState:  "ACTIVE",
 				DstVLANAttachmentVLANID: "300",
@@ -311,8 +325,76 @@ func TestRenderMermaidCollapsesAcrossWorkloadsEnvironmentsAndDestinations(t *tes
 	if countSubstring(content, "dst_region: us-central1") != 1 {
 		t.Fatalf("expected one shared dst_region node, got %d in %s", countSubstring(content, "dst_region: us-central1"), content)
 	}
+	if countSubstring(content, "dst_vpc: shared-vpc") != 1 {
+		t.Fatalf("expected one shared dst_vpc label, got %d in %s", countSubstring(content, "dst_vpc: shared-vpc"), content)
+	}
 	if countSubstring(content, "dst_project: project-") != 3 {
 		t.Fatalf("expected three distinct dst_project nodes, got %d in %s", countSubstring(content, "dst_project: project-"), content)
+	}
+}
+
+func TestRenderMermaidAddsSeparateVPCNodeWhenRegionHasMultipleVPCs(t *testing.T) {
+	report := model.Report{
+		Type:          "interconnect",
+		SourceProject: "src",
+		Selectors: model.Selectors{
+			Org: "dbc",
+		},
+		Items: []model.MappingItem{
+			{
+				Org:               "dbc",
+				Workload:          "native",
+				Environment:       "dev",
+				SrcProject:        "src",
+				SrcInterconnect:   "ic-1",
+				Mapped:            true,
+				SrcRegion:         "global",
+				SrcState:          "ACTIVE",
+				DstProject:        "project-a",
+				DstRegion:         "us-central1",
+				DstVPC:            "vpc-a",
+				DstVLANAttachment: "attachment-a",
+				DstCloudRouter:    "router-a",
+				DstCloudRouterASN: "64520",
+				BGPPeeringStatus:  "UP",
+				RemoteBGPPeer:     "peer-a",
+				RemoteBGPPeerIP:   "169.254.10.2",
+				RemoteBGPPeerASN:  "64560",
+			},
+			{
+				Org:               "dbc",
+				Workload:          "native",
+				Environment:       "dev",
+				SrcProject:        "src",
+				SrcInterconnect:   "ic-2",
+				Mapped:            true,
+				SrcRegion:         "global",
+				SrcState:          "ACTIVE",
+				DstProject:        "project-b",
+				DstRegion:         "us-central1",
+				DstVPC:            "vpc-b",
+				DstVLANAttachment: "attachment-b",
+				DstCloudRouter:    "router-b",
+				DstCloudRouterASN: "64521",
+				BGPPeeringStatus:  "UP",
+				RemoteBGPPeer:     "peer-b",
+				RemoteBGPPeerIP:   "169.254.20.2",
+				RemoteBGPPeerASN:  "64561",
+			},
+		},
+	}
+
+	data, _, err := Render(report, FormatMermaid)
+	if err != nil {
+		t.Fatalf("render mermaid: %v", err)
+	}
+
+	content := string(data)
+	if countSubstring(content, "dst_region: us-central1") != 1 {
+		t.Fatalf("expected one shared dst_region node, got %d in %s", countSubstring(content, "dst_region: us-central1"), content)
+	}
+	if countSubstring(content, "dst_vpc: vpc-a") != 1 || countSubstring(content, "dst_vpc: vpc-b") != 1 {
+		t.Fatalf("expected separate dst_vpc nodes, got %s", content)
 	}
 }
 

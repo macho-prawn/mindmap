@@ -32,6 +32,7 @@ var separatedHeader = []string{
 	"src_macsec_keyname",
 	"dst_project",
 	"dst_region",
+	"dst_vpc",
 	"dst_vlan_attachment",
 	"dst_vlan_attachment_state",
 	"dst_vlan_attachment_vlanid",
@@ -86,6 +87,7 @@ func renderSeparated(report model.Report, delimiter rune) ([]byte, error) {
 			item.SrcMacsecKeyName,
 			item.DstProject,
 			item.DstRegion,
+			item.DstVPC,
 			item.DstVLANAttachment,
 			item.DstVLANAttachmentState,
 			item.DstVLANAttachmentVLANID,
@@ -130,6 +132,7 @@ func renderMermaid(report model.Report) []byte {
 	var b strings.Builder
 	b.WriteString("flowchart LR\n")
 
+	regionVPCs := buildRegionVPCs(items)
 	seen := make(map[string]struct{})
 	for _, item := range items {
 		orgID := mermaidID("org-" + item.Org)
@@ -151,15 +154,23 @@ func renderMermaid(report model.Report) []byte {
 			continue
 		}
 
+		regionKey := mermaidRegionKey(item)
+		regionVPC := regionVPCs[regionKey]
 		regionID := mermaidID("dst-region-" + item.Org + "-" + item.SrcProject + "-" + item.DstRegion)
+		vpcID := mermaidID("dst-vpc-" + item.Org + "-" + item.SrcProject + "-" + item.DstRegion + "-" + item.DstVPC)
 		attachmentID := mermaidID("attachment-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVLANAttachment)
 		routerID := mermaidID("router-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVLANAttachment + "-" + item.DstCloudRouter)
 		interfaceID := mermaidID("interface-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVLANAttachment + "-" + item.DstCloudRouter + "-" + item.DstCloudRouterInterface)
 		statusID := mermaidID("bgp-status-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVLANAttachment + "-" + item.DstCloudRouter + "-" + item.DstCloudRouterInterface + "-" + item.RemoteBGPPeer + "-" + item.RemoteBGPPeerIP + "-" + item.BGPPeeringStatus)
 		peerID := mermaidID("peer-" + item.Org + "-" + item.SrcProject + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVLANAttachment + "-" + item.DstCloudRouter + "-" + item.DstCloudRouterInterface + "-" + item.RemoteBGPPeer + "-" + item.RemoteBGPPeerIP + "-" + item.RemoteBGPPeerASN)
 
-		linkIfMissing(&b, seen, dstProjectID, regionID, destinationRegionItemLabel(item))
-		linkIfMissing(&b, seen, regionID, attachmentID, attachmentItemLabel(item))
+		linkIfMissing(&b, seen, dstProjectID, regionID, destinationRegionItemLabel(item, regionVPC))
+		attachmentParentID := regionID
+		if !regionVPC.Shared {
+			linkIfMissing(&b, seen, regionID, vpcID, destinationVPCItemLabel(item))
+			attachmentParentID = vpcID
+		}
+		linkIfMissing(&b, seen, attachmentParentID, attachmentID, attachmentItemLabel(item))
 		linkIfMissing(&b, seen, attachmentID, routerID, routerItemLabel(item))
 		if hasInterfaceItem(item) {
 			linkIfMissing(&b, seen, routerID, interfaceID, interfaceItemLabel(item))
@@ -226,6 +237,7 @@ type jsonRegionNode struct {
 }
 
 type jsonAttachmentNode struct {
+	DstVPC                    string `json:"dst_vpc"`
 	DstVLANAttachment         string `json:"dst_vlan_attachment"`
 	DstVLANAttachmentState    string `json:"dst_vlan_attachment_state"`
 	DstVLANAttachmentVLANID   string `json:"dst_vlan_attachment_vlanid"`
@@ -285,6 +297,7 @@ type regionGroup struct {
 }
 
 type attachmentGroup struct {
+	DstVPC                    string
 	DstVLANAttachment         string
 	DstVLANAttachmentState    string
 	DstVLANAttachmentVLANID   string
@@ -352,6 +365,7 @@ func buildJSONInterconnects(groups []interconnectGroup) []jsonInterconnectNode {
 				}
 				for _, attachment := range region.DstVLANAttachments {
 					regionNode.DstVLANAttachments = append(regionNode.DstVLANAttachments, jsonAttachmentNode{
+						DstVPC:                    valueOrUnknown(attachment.DstVPC),
 						DstVLANAttachment:         valueOrUnknown(attachment.DstVLANAttachment),
 						DstVLANAttachmentState:    valueOrUnknown(attachment.DstVLANAttachmentState),
 						DstVLANAttachmentVLANID:   valueOrUnknown(attachment.DstVLANAttachmentVLANID),
@@ -518,6 +532,7 @@ func groupRegions(items []model.MappingItem) []regionGroup {
 		region := regionGroup{DstRegion: name}
 		for _, item := range grouped[name] {
 			region.DstVLANAttachments = append(region.DstVLANAttachments, attachmentGroup{
+				DstVPC:                    item.DstVPC,
 				DstVLANAttachment:         item.DstVLANAttachment,
 				DstVLANAttachmentState:    item.DstVLANAttachmentState,
 				DstVLANAttachmentVLANID:   item.DstVLANAttachmentVLANID,
@@ -638,10 +653,11 @@ func drawTreeAttachment(b *strings.Builder, attachment attachmentGroup, indent s
 	}
 	fmt.Fprintf(
 		b,
-		"%s%s dst_vlan_attachment: %s [dst_vlan_attachment_state: %s, dst_vlan_attachment_vlanid: %s]\n",
+		"%s%s dst_vlan_attachment: %s [dst_vpc: %s, dst_vlan_attachment_state: %s, dst_vlan_attachment_vlanid: %s]\n",
 		indent,
 		prefix,
 		valueOrUnknown(attachment.DstVLANAttachment),
+		valueOrUnknown(attachment.DstVPC),
 		valueOrUnknown(attachment.DstVLANAttachmentState),
 		valueOrUnknown(attachment.DstVLANAttachmentVLANID),
 	)
@@ -700,8 +716,55 @@ func destinationProjectItemLabel(item model.MappingItem) string {
 	)
 }
 
-func destinationRegionItemLabel(item model.MappingItem) string {
+type regionVPCSummary struct {
+	Shared bool
+	Value  string
+}
+
+func buildRegionVPCs(items []model.MappingItem) map[string]regionVPCSummary {
+	regionVPCSets := make(map[string]map[string]struct{})
+	for _, item := range items {
+		if !item.Mapped {
+			continue
+		}
+		key := mermaidRegionKey(item)
+		if _, ok := regionVPCSets[key]; !ok {
+			regionVPCSets[key] = make(map[string]struct{})
+		}
+		regionVPCSets[key][item.DstVPC] = struct{}{}
+	}
+
+	result := make(map[string]regionVPCSummary, len(regionVPCSets))
+	for key, values := range regionVPCSets {
+		if len(values) == 1 {
+			result[key] = regionVPCSummary{
+				Shared: true,
+				Value:  soleKey(values),
+			}
+			continue
+		}
+		result[key] = regionVPCSummary{}
+	}
+	return result
+}
+
+func mermaidRegionKey(item model.MappingItem) string {
+	return item.Org + "\x00" + item.SrcProject + "\x00" + item.DstRegion
+}
+
+func destinationRegionItemLabel(item model.MappingItem, summary regionVPCSummary) string {
+	if summary.Shared {
+		return fmt.Sprintf(
+			"dst_region: %s<br>dst_vpc: %s",
+			valueOrUnknown(item.DstRegion),
+			valueOrUnknown(summary.Value),
+		)
+	}
 	return "dst_region: " + valueOrUnknown(item.DstRegion)
+}
+
+func destinationVPCItemLabel(item model.MappingItem) string {
+	return "dst_vpc: " + valueOrUnknown(item.DstVPC)
 }
 
 func attachmentItemLabel(item model.MappingItem) string {

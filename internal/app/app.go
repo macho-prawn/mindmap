@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"netmap/internal/config"
 	"netmap/internal/model"
@@ -42,11 +43,11 @@ func (RealFileStore) WriteFile(name string, data []byte) error {
 }
 
 type App struct {
-	files    FileStore
-	provider provider.DiscoveryProvider
-	now      func() time.Time
-	status   io.Writer
-	spinner  *statusSpinner
+	files       FileStore
+	provider    provider.DiscoveryProvider
+	now         func() time.Time
+	status      io.Writer
+	statusTable *statusTable
 }
 
 type Options struct {
@@ -110,14 +111,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return fmt.Errorf("vpn is not implemented yet for %s", scope)
 	}
 
-	a.startSpinner(
-		"Running netmap for org=%s workload=%s environment=%s source_project=%s",
-		opts.Org,
-		statusValueOrAll(opts.Workload),
-		statusValueOrAll(opts.Environment),
-		opts.SourceProject,
-	)
-	defer a.stopSpinner()
+	a.startStatusTable()
+	defer a.stopStatusTable()
 
 	report, err := a.buildInterconnectReport(ctx, opts, targets)
 	if err != nil {
@@ -140,8 +135,7 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return fmt.Errorf("write output %q: %w", outputPath, err)
 	}
 
-	a.stopSpinner()
-	a.statusf("output file: %s", outputPath)
+	a.finishStatusTable(outputPath)
 	return nil
 }
 
@@ -227,8 +221,9 @@ Output:
   JSON output file:    netmap-interconnect-<src>-to-<dst>-<timestamp>.json
   Tree output file:    netmap-interconnect-<src>-to-<dst>-<timestamp>.tree.txt
   Org fanout output:   netmap-interconnect-<src>-to-<org>-all-<timestamp>.<ext>
-  A Braille spinner is shown on stderr while discovery is in progress.
-  On success, the CLI prints: output file: <path>
+  Stderr shows an ASCII 2-column task table with a Braille spinner on active rows.
+  Completed rows use a tick marker and print per-task elapsed time.
+  The final merged row prints Output: <path> and Total Time: <duration>.
   Mermaid output can be viewed in https://mermaid.live
 `) + "\n"
 }
@@ -245,22 +240,30 @@ func (a *App) buildInterconnectReport(ctx context.Context, opts Options, targets
 	var items []model.MappingItem
 	itemsByProject := make(map[string][]model.MappingItem, len(targets))
 	for _, target := range targets {
+		label := taskLabel(target)
+		startedAt := a.now()
+		a.startTask(label)
+		failTask := func(err error) (model.Report, error) {
+			a.failTask(label, a.now().Sub(startedAt))
+			return model.Report{}, err
+		}
+
 		projectItems, ok := itemsByProject[target.ProjectID]
 		if !ok {
 			attachments, err := a.provider.ListVLANAttachments(ctx, target.ProjectID)
 			if err != nil {
-				return model.Report{}, err
+				return failTask(err)
 			}
 			routers, err := a.provider.ListCloudRouters(ctx, target.ProjectID)
 			if err != nil {
-				return model.Report{}, err
+				return failTask(err)
 			}
 
 			statusByRouter := make(map[string]model.RouterStatus, len(routers))
 			for _, router := range routers {
 				status, err := a.provider.GetCloudRouterStatus(ctx, target.ProjectID, router.Region, router.Name)
 				if err != nil {
-					return model.Report{}, err
+					return failTask(err)
 				}
 				statusByRouter[routerKey(router.Region, router.Name)] = status
 			}
@@ -270,14 +273,7 @@ func (a *App) buildInterconnectReport(ctx context.Context, opts Options, targets
 		}
 
 		items = append(items, itemsForTarget(target, projectItems)...)
-
-		a.statusf(
-			"Completed org=%s workload=%s environment=%s project=%s",
-			target.Org,
-			target.Workload,
-			target.Environment,
-			target.ProjectID,
-		)
+		a.completeTask(label, a.now().Sub(startedAt))
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].Org != items[j].Org {
@@ -331,33 +327,50 @@ func (a *App) buildInterconnectReport(ctx context.Context, opts Options, targets
 	}, nil
 }
 
-func (a *App) statusf(format string, args ...any) {
+func (a *App) startStatusTable() {
 	if a.status == nil {
 		return
 	}
-	if a.spinner != nil {
-		a.spinner.Println(fmt.Sprintf(format, args...))
-		return
-	}
-	fmt.Fprintf(a.status, format+"\n", args...)
+	a.stopStatusTable()
+	table := newStatusTable(a.status, a.now)
+	a.statusTable = table
+	table.Start()
 }
 
-func (a *App) startSpinner(format string, args ...any) {
-	if a.status == nil {
+func (a *App) stopStatusTable() {
+	if a.statusTable == nil {
 		return
 	}
-	a.stopSpinner()
-	spinner := newStatusSpinner(a.status, fmt.Sprintf(format, args...))
-	a.spinner = spinner
-	spinner.Start()
+	a.statusTable.Stop()
+	a.statusTable = nil
 }
 
-func (a *App) stopSpinner() {
-	if a.spinner == nil {
+func (a *App) startTask(label string) {
+	if a.statusTable == nil {
 		return
 	}
-	a.spinner.Stop()
-	a.spinner = nil
+	a.statusTable.StartTask(label)
+}
+
+func (a *App) completeTask(label string, elapsed time.Duration) {
+	if a.statusTable == nil {
+		return
+	}
+	a.statusTable.CompleteTask(label, elapsed)
+}
+
+func (a *App) failTask(label string, elapsed time.Duration) {
+	if a.statusTable == nil {
+		return
+	}
+	a.statusTable.FailTask(label, elapsed)
+}
+
+func (a *App) finishStatusTable(outputPath string) {
+	if a.statusTable == nil {
+		return
+	}
+	a.statusTable.Finish(outputPath)
 }
 
 func buildMappingItems(srcProject, dstProject string, interconnects []model.DedicatedInterconnect, attachments []model.VLANAttachment, routers []model.CloudRouter, statuses map[string]model.RouterStatus) []model.MappingItem {
@@ -434,6 +447,7 @@ func baseItem(srcProject, dstProject string, interconnect model.DedicatedInterco
 		SrcMacsecKeyName:        interconnect.MacsecKeyName,
 		DstProject:              dstProject,
 		DstRegion:               attachment.Region,
+		DstVPC:                  firstNonEmpty(router.Network, attachment.Network),
 		DstVLANAttachment:       attachment.Name,
 		DstVLANAttachmentState:  attachment.State,
 		DstVLANAttachmentVLANID: attachment.VLANID,
@@ -534,99 +548,261 @@ func uniqueProjectIDs(targets []config.ResolvedTarget) []string {
 	return projectIDs
 }
 
-type statusSpinner struct {
+func taskLabel(target config.ResolvedTarget) string {
+	return fmt.Sprintf(
+		"org=%s workload=%s environment=%s project=%s",
+		target.Org,
+		target.Workload,
+		target.Environment,
+		target.ProjectID,
+	)
+}
+
+type taskState int
+
+const (
+	taskStateRunning taskState = iota
+	taskStateCompleted
+	taskStateFailed
+)
+
+type taskRow struct {
+	Label     string
+	State     taskState
+	StartedAt time.Time
+	Elapsed   time.Duration
+}
+
+type statusTable struct {
 	writer   io.Writer
-	message  string
+	now      func() time.Time
 	interval time.Duration
 	mu       sync.Mutex
 	stopCh   chan struct{}
 	doneCh   chan struct{}
 	frameIdx int
+	rows     []taskRow
+	active   int
+	summary  []string
+	lines    int
 	stopped  bool
 }
 
-func newStatusSpinner(writer io.Writer, message string) *statusSpinner {
-	return &statusSpinner{
+func newStatusTable(writer io.Writer, now func() time.Time) *statusTable {
+	return &statusTable{
 		writer:   writer,
-		message:  message,
+		now:      now,
 		interval: 100 * time.Millisecond,
 		stopCh:   make(chan struct{}),
 		doneCh:   make(chan struct{}),
+		active:   -1,
 	}
 }
 
-func (s *statusSpinner) Start() {
-	if s == nil || s.writer == nil {
+func (t *statusTable) Start() {
+	if t == nil || t.writer == nil {
 		return
 	}
 
-	s.mu.Lock()
-	s.writeFrameLocked()
-	s.mu.Unlock()
-
 	go func() {
-		ticker := time.NewTicker(s.interval)
+		ticker := time.NewTicker(t.interval)
 		defer ticker.Stop()
-		defer close(s.doneCh)
+		defer close(t.doneCh)
 
 		for {
 			select {
 			case <-ticker.C:
-				s.mu.Lock()
-				if s.stopped {
-					s.mu.Unlock()
+				t.mu.Lock()
+				if t.stopped {
+					t.mu.Unlock()
 					return
 				}
-				s.frameIdx = (s.frameIdx + 1) % len(brailleSpinnerFrames)
-				s.writeFrameLocked()
-				s.mu.Unlock()
-			case <-s.stopCh:
+				if t.active >= 0 {
+					t.frameIdx = (t.frameIdx + 1) % len(brailleSpinnerFrames)
+					t.renderLocked()
+				}
+				t.mu.Unlock()
+			case <-t.stopCh:
 				return
 			}
 		}
 	}()
 }
 
-func (s *statusSpinner) Stop() {
-	if s == nil || s.writer == nil {
+func (t *statusTable) Stop() {
+	if t == nil || t.writer == nil {
 		return
 	}
 
-	s.mu.Lock()
-	if s.stopped {
-		s.mu.Unlock()
+	t.mu.Lock()
+	if t.stopped {
+		t.mu.Unlock()
 		return
 	}
-	s.stopped = true
-	close(s.stopCh)
-	s.clearLineLocked()
-	s.mu.Unlock()
+	t.stopped = true
+	close(t.stopCh)
+	t.mu.Unlock()
 
-	<-s.doneCh
+	<-t.doneCh
 }
 
-func (s *statusSpinner) Println(line string) {
-	if s == nil || s.writer == nil {
+func (t *statusTable) StartTask(label string) {
+	if t == nil || t.writer == nil {
 		return
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.stopped {
-		fmt.Fprintln(s.writer, line)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.stopped {
 		return
 	}
-
-	s.clearLineLocked()
-	fmt.Fprintln(s.writer, line)
-	s.writeFrameLocked()
+	t.rows = append(t.rows, taskRow{
+		Label:     label,
+		State:     taskStateRunning,
+		StartedAt: t.now().UTC(),
+	})
+	t.active = len(t.rows) - 1
+	t.frameIdx = 0
+	t.renderLocked()
 }
 
-func (s *statusSpinner) writeFrameLocked() {
-	fmt.Fprintf(s.writer, "\r\x1b[2K%s %s", brailleSpinnerFrames[s.frameIdx], s.message)
+func (t *statusTable) CompleteTask(label string, elapsed time.Duration) {
+	t.finishTask(taskStateCompleted, label, elapsed)
 }
 
-func (s *statusSpinner) clearLineLocked() {
-	fmt.Fprint(s.writer, "\r\x1b[2K")
+func (t *statusTable) FailTask(label string, elapsed time.Duration) {
+	t.finishTask(taskStateFailed, label, elapsed)
+}
+
+func (t *statusTable) finishTask(state taskState, label string, elapsed time.Duration) {
+	if t == nil || t.writer == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.stopped || t.active < 0 || t.active >= len(t.rows) {
+		return
+	}
+	t.rows[t.active].State = state
+	t.rows[t.active].Label = label
+	t.rows[t.active].Elapsed = elapsed
+	t.active = -1
+	t.renderLocked()
+}
+
+func (t *statusTable) Finish(outputPath string) {
+	if t == nil || t.writer == nil {
+		return
+	}
+	t.mu.Lock()
+	total := t.totalDurationLocked()
+	t.summary = []string{
+		"Output: " + outputPath,
+		"Total Time: " + formatStatusDuration(total),
+	}
+	t.renderLocked()
+	t.mu.Unlock()
+	t.Stop()
+}
+
+func (t *statusTable) totalDurationLocked() time.Duration {
+	var total time.Duration
+	for _, row := range t.rows {
+		if row.State == taskStateCompleted {
+			total += row.Elapsed
+		}
+	}
+	return total
+}
+
+func (t *statusTable) renderLocked() {
+	lines := t.buildLinesLocked()
+	if len(lines) == 0 {
+		return
+	}
+	if t.lines > 0 {
+		fmt.Fprintf(t.writer, "\x1b[%dA", t.lines)
+	}
+	for _, line := range lines {
+		fmt.Fprintf(t.writer, "\r\x1b[2K%s\n", line)
+	}
+	t.lines = len(lines)
+}
+
+func (t *statusTable) buildLinesLocked() []string {
+	if len(t.rows) == 0 && len(t.summary) == 0 {
+		return nil
+	}
+
+	col1Width := len("Task")
+	col2Width := len("Time")
+	for idx, row := range t.rows {
+		label := t.renderLabelLocked(idx, row)
+		if width := utf8.RuneCountInString(label); width > col1Width {
+			col1Width = width
+		}
+		timer := t.renderTimerLocked(idx, row)
+		if width := utf8.RuneCountInString(timer); width > col2Width {
+			col2Width = width
+		}
+	}
+
+	mergedWidth := col1Width + col2Width + 3
+	twoColBorder := fmt.Sprintf("+-%s-+-%s-+", strings.Repeat("-", col1Width), strings.Repeat("-", col2Width))
+	mergedBorder := fmt.Sprintf("+-%s-+", strings.Repeat("-", mergedWidth))
+
+	lines := []string{twoColBorder}
+	for idx, row := range t.rows {
+		lines = append(lines, fmt.Sprintf("| %-*s | %*s |", col1Width, t.renderLabelLocked(idx, row), col2Width, t.renderTimerLocked(idx, row)))
+	}
+	if len(t.summary) == 0 {
+		lines = append(lines, twoColBorder)
+		return lines
+	}
+	lines = append(lines, mergedBorder)
+	for _, line := range t.summary {
+		lines = append(lines, fmt.Sprintf("| %-*s |", mergedWidth, line))
+	}
+	lines = append(lines, mergedBorder)
+	return lines
+}
+
+func (t *statusTable) renderLabelLocked(idx int, row taskRow) string {
+	switch row.State {
+	case taskStateCompleted:
+		return "✅ Completed " + row.Label
+	case taskStateFailed:
+		return "❌ Failed " + row.Label
+	default:
+		frame := brailleSpinnerFrames[t.frameIdx%len(brailleSpinnerFrames)]
+		if idx != t.active {
+			frame = brailleSpinnerFrames[0]
+		}
+		return frame + " Running " + row.Label
+	}
+}
+
+func (t *statusTable) renderTimerLocked(idx int, row taskRow) string {
+	switch row.State {
+	case taskStateCompleted, taskStateFailed:
+		return formatStatusDuration(row.Elapsed)
+	default:
+		if idx != t.active {
+			return formatStatusDuration(0)
+		}
+		return formatStatusDuration(t.now().UTC().Sub(row.StartedAt))
+	}
+}
+
+func formatStatusDuration(duration time.Duration) string {
+	if duration < 0 {
+		duration = 0
+	}
+	switch {
+	case duration < time.Second:
+		return duration.Truncate(time.Millisecond).String()
+	case duration < 10*time.Second:
+		return duration.Truncate(100 * time.Millisecond).String()
+	default:
+		return duration.Truncate(time.Second).String()
+	}
 }
