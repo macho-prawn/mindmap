@@ -50,12 +50,12 @@ jobs:
               echo "Status: SUCCESS"
             else
               echo "Status: FAILURE"
-              echo
-              echo "### Test output tail"
-              echo '```text'
-              tail -n 200 go-test.log
-              echo '```'
             fi
+            echo
+            echo "### Test output"
+            echo '```text'
+            sed '/^SUCCESS$/d' go-test.log
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail workflow when tests fail
