@@ -18,6 +18,7 @@ permissions:
 
 jobs:
   test:
+    name: Code Test
     runs-on: ubuntu-latest
 
     steps:
