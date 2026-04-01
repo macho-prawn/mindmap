@@ -1,0 +1,63 @@
+name: NetMap Test
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    paths:
+      - "cmd/**"
+      - "internal/**"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run Go tests
+        id: tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          go test ./... 2>&1 | tee go-test.log
+
+      - name: Write test summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Go test summary"
+            echo
+            if [ "${{ steps.tests.outcome }}" = "success" ]; then
+              echo "Status: SUCCESS"
+            else
+              echo "Status: FAILURE"
+              echo
+              echo "### Test output tail"
+              echo '```text'
+              tail -n 200 go-test.log
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail workflow when tests fail
+        if: steps.tests.outcome != 'success'
+        shell: bash
+        run: exit 1

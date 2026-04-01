@@ -65,6 +65,19 @@ GOCACHE=/tmp/go-build-cache /usr/local/go/bin/go run ./cmd/netmap \
 /usr/local/go/bin/go test ./...
 ```
 
+## Release
+
+- `VERSION` is the release source of truth and currently contains `1.0.0`
+- Pull requests targeting `main` run `go test ./...` when changes land under `cmd/` or `internal/`
+- Pull request checks are the only test gate; the release workflow does not re-run tests after merge
+- The release workflow runs only after the pull request is merged into `main`
+- The release workflow validates `VERSION` and fails in the build job if that version already exists
+- Release artifacts are:
+  - `netmap_<version>_darwin_amd64.tar.gz`
+  - `netmap_<version>_windows_amd64.zip`
+- Each archive contains only `README.md` and the platform binary
+- `CHANGELOG.md` contains the detailed release history for shipped versions
+
 ## Usage
 
 ```bash

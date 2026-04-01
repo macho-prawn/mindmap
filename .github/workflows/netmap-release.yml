@@ -1,0 +1,93 @@
+name: NetMap Release
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
+    paths:
+      - "cmd/**"
+      - "internal/**"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out merged commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Read VERSION
+        id: version
+        shell: bash
+        run: |
+          if [ ! -f VERSION ]; then
+            echo "VERSION file is missing" >&2
+            exit 1
+          fi
+
+          version="$(tr -d '[:space:]' < VERSION)"
+          if [ -z "$version" ]; then
+            echo "VERSION file is empty" >&2
+            exit 1
+          fi
+
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Fail if release already exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        shell: bash
+        run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION already exists" >&2
+            exit 1
+          fi
+
+      - name: Build and package release archives
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p dist/build dist/pkg/darwin-amd64 dist/pkg/windows-amd64
+
+          GOOS=darwin GOARCH=amd64 go build -o dist/build/netmap ./cmd/netmap
+          cp README.md dist/pkg/darwin-amd64/README.md
+          cp dist/build/netmap dist/pkg/darwin-amd64/netmap
+          tar -C dist/pkg/darwin-amd64 -czf "dist/netmap_${VERSION}_darwin_amd64.tar.gz" README.md netmap
+
+          GOOS=windows GOARCH=amd64 go build -o dist/build/netmap.exe ./cmd/netmap
+          cp README.md dist/pkg/windows-amd64/README.md
+          cp dist/build/netmap.exe dist/pkg/windows-amd64/netmap.exe
+          (
+            cd dist/pkg/windows-amd64
+            zip -q "../../netmap_${VERSION}_windows_amd64.zip" README.md netmap.exe
+          )
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        shell: bash
+        run: |
+          gh release create "$VERSION" \
+            dist/netmap_"$VERSION"_darwin_amd64.tar.gz \
+            dist/netmap_"$VERSION"_windows_amd64.zip \
+            --title "netmap $VERSION" \
+            --notes "Release $VERSION"
