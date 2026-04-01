@@ -43,7 +43,7 @@ Selector expansion is:
 ./netmap version
 ```
 
-This prints the embedded CLI version, currently `1.0.1`.
+This prints the embedded CLI version, currently `1.1.0`.
 
 Running `./netmap` or `./netmap -h` prints the help menu without requiring ADC credentials.
 
@@ -77,8 +77,9 @@ GOCACHE=/tmp/go-build-cache /usr/local/go/bin/go run ./cmd/netmap \
 
 ## Release
 
-- `VERSION` is the release source of truth and currently contains `1.0.1`
-- The release workflow prepends `v` when creating and checking release tags, so `VERSION=1.0.1` produces release tag `v1.0.1`
+- `VERSION` is the release source of truth and currently contains `1.1.0`
+- The release workflow prepends `v` when creating and checking release tags, so `VERSION=1.1.0` produces release tag `v1.1.0`
+- The GitHub release title is also set to `v1.1.0`
 - PR validation runs in workflow `NetMap Test` from `.github/workflows/netmap-test.yml`
 - Release publishing runs in workflow `NetMap Release` from `.github/workflows/netmap-release.yml`
 - The GitHub Actions job labels are:
@@ -102,7 +103,8 @@ GOCACHE=/tmp/go-build-cache /usr/local/go/bin/go run ./cmd/netmap \
   -o dbc \
   -w native \
   -e dev \
-  -p src-project
+  -p src-project \
+  -c config.yaml
 ```
 
 ### Flags
@@ -113,7 +115,7 @@ GOCACHE=/tmp/go-build-cache /usr/local/go/bin/go run ./cmd/netmap \
 - `-e` optional, environment selector; with `-o` and no `-w`, expands all workloads containing that environment
 - `-p` mandatory only for `-t interconnect`; source project containing dedicated interconnects
 - `-f` optional, output format override: `csv`, `tsv`, `json`, or `tree`
-- `-config` optional, defaults to `config.yaml`
+- `-c` optional, defaults to `config.yaml`
 - `-h` optional, prints usage
 
 ## Behavior

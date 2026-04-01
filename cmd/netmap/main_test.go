@@ -17,7 +17,7 @@ func TestRunVersionCommand(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("expected success exit code, got %d", exitCode)
 	}
-	if strings.TrimSpace(stdout.String()) != "1.0.1" {
+	if strings.TrimSpace(stdout.String()) != "1.1.0" {
 		t.Fatalf("expected version output, got %q", stdout.String())
 	}
 	if stderr.Len() != 0 {
