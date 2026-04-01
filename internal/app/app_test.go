@@ -119,6 +119,23 @@ func TestParseOptionsAllowsOptionalWorkloadAndEnv(t *testing.T) {
 	}
 }
 
+func TestParseOptionsAcceptsShortConfigFlag(t *testing.T) {
+	opts, err := ParseOptions([]string{"-t", "interconnect", "-o", "dbc", "-p", "src-project", "-c", "custom.yaml"})
+	if err != nil {
+		t.Fatalf("parse options: %v", err)
+	}
+	if opts.ConfigPath != "custom.yaml" {
+		t.Fatalf("expected custom config path, got %+v", opts)
+	}
+}
+
+func TestParseOptionsRejectsLegacyConfigFlag(t *testing.T) {
+	_, err := ParseOptions([]string{"-t", "interconnect", "-o", "dbc", "-p", "src-project", "-config", "custom.yaml"})
+	if err == nil || !strings.Contains(err.Error(), "flag provided but not defined: -config") {
+		t.Fatalf("expected legacy config flag error, got %v", err)
+	}
+}
+
 func TestParseOptionsHelp(t *testing.T) {
 	opts, err := ParseOptions([]string{"-h"})
 	if err != nil {
@@ -130,7 +147,7 @@ func TestParseOptionsHelp(t *testing.T) {
 	if !strings.Contains(opts.Usage, "Selector Expansion:") {
 		t.Fatalf("expected selector expansion guidance, got %+v", opts)
 	}
-	if !strings.Contains(opts.Usage, "netmap\n  netmap version") {
+	if !strings.Contains(opts.Usage, "Usage:\n\n  netmap [-h]\n  netmap version") {
 		t.Fatalf("expected bare command and version usage, got %+v", opts)
 	}
 	if !strings.Contains(opts.Usage, "-o + -e        expands all workloads containing that environment") {
@@ -139,17 +156,20 @@ func TestParseOptionsHelp(t *testing.T) {
 	if !strings.Contains(opts.Usage, "Omit -f to write Mermaid output by default.") {
 		t.Fatalf("expected default mermaid guidance, got %+v", opts)
 	}
+	if !strings.Contains(opts.Usage, "-c        optional, defaults to config.yaml") || strings.Contains(opts.Usage, "-config") {
+		t.Fatalf("expected short config flag help text, got %+v", opts)
+	}
 	if !strings.Contains(opts.Usage, "netmap version") || !strings.Contains(opts.Usage, "print the current netmap version and exit") {
 		t.Fatalf("expected version command help text, got %+v", opts)
 	}
+	if strings.Contains(opts.Usage, "Stderr shows an ASCII 2-column task table") || strings.Contains(opts.Usage, "Completed rows use a tick marker") || strings.Contains(opts.Usage, "The final merged row prints Output: <path> and Total Time: <duration>.") {
+		t.Fatalf("expected simplified output section, got %+v", opts)
+	}
+	if !strings.Contains(opts.Usage, "Org fanout output:   netmap-interconnect-<src>-to-<org>-all-<timestamp>.<ext>\n\n  Mermaid output can be viewed in https://mermaid.live") {
+		t.Fatalf("expected blank line before mermaid viewer note, got %+v", opts)
+	}
 	if !strings.Contains(opts.Usage, "Mermaid output can be viewed in https://mermaid.live") {
 		t.Fatalf("expected mermaid.live guidance, got %+v", opts)
-	}
-	if !strings.Contains(opts.Usage, "Output: <path>") || !strings.Contains(opts.Usage, "Total Time: <duration>") {
-		t.Fatalf("expected final summary guidance, got %+v", opts)
-	}
-	if !strings.Contains(opts.Usage, "2-column task table") {
-		t.Fatalf("expected task table guidance, got %+v", opts)
 	}
 }
 

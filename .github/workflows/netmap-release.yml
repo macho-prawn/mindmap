@@ -92,4 +92,5 @@ jobs:
           gh release create "$RELEASE_TAG" \
             dist/netmap_"$VERSION"_darwin_amd64.tar.gz \
             dist/netmap_"$VERSION"_windows_amd64.zip \
+            --title "$RELEASE_TAG" \
             --notes-file CHANGELOG.md

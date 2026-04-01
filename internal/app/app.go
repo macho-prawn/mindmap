@@ -151,7 +151,7 @@ func ParseOptions(args []string) (Options, error) {
 	fs.StringVar(&opts.Environment, "e", "", "environment selector")
 	fs.StringVar(&opts.SourceProject, "p", "", "source project for interconnect discovery")
 	fs.StringVar(&opts.Format, "f", "", "optional output format: csv, tsv, json, tree")
-	fs.StringVar(&opts.ConfigPath, "config", "config.yaml", "config path")
+	fs.StringVar(&opts.ConfigPath, "c", "config.yaml", "config path")
 	fs.Usage = func() {
 		fmt.Fprint(&usage, usageText())
 	}
@@ -202,10 +202,11 @@ func ParseOptions(args []string) (Options, error) {
 func usageText() string {
 	return strings.TrimSpace(`
 Usage:
-  netmap
+
+  netmap [-h]
   netmap version
-  netmap -t interconnect -o <org> [-w <workload>] [-e <env>] -p <src-project> [-f <format>] [-config <path>]
-  netmap -t vpn -o <org> [-w <workload>] [-e <env>] [-f <format>] [-config <path>]
+  netmap -t interconnect -o <org> [-w <workload>] [-e <env>] -p <src-project> [-f <format>] [-c <path>]
+  netmap -t vpn -o <org> [-w <workload>] [-e <env>] [-f <format>] [-c <path>]
 
 Flags:
   -t        mandatory, accepts interconnect or vpn
@@ -214,7 +215,7 @@ Flags:
   -e        optional, environment selector; with -o and no -w, expands all workloads containing that environment
   -p        mandatory only for -t interconnect; source project containing dedicated interconnects
   -f        optional, output format override: csv, tsv, json, or tree
-  -config   optional, defaults to config.yaml
+  -c        optional, defaults to config.yaml
   -h        optional, print usage
 
 Commands:
@@ -234,9 +235,7 @@ Output:
   JSON output file:    netmap-interconnect-<src>-to-<dst>-<timestamp>.json
   Tree output file:    netmap-interconnect-<src>-to-<dst>-<timestamp>.tree.txt
   Org fanout output:   netmap-interconnect-<src>-to-<org>-all-<timestamp>.<ext>
-  Stderr shows an ASCII 2-column task table with a Braille spinner on active rows.
-  Completed rows use a tick marker and print per-task elapsed time.
-  The final merged row prints Output: <path> and Total Time: <duration>.
+
   Mermaid output can be viewed in https://mermaid.live
 `) + "\n"
 }

@@ -1,9 +1,11 @@
 # Changelog
 
-## 1.0.1
+## 1.1.0
 
 ### Changed
 
-- `netmap` with no arguments now prints the help menu and exits successfully.
-- `netmap -h` prints the help menu without attempting ADC credential or provider initialization.
-- The embedded CLI version, repository `VERSION`, and release documentation now point to `1.0.1`.
+- Renamed the config flag from `-config` to `-c`.
+- Updated CLI help formatting to show `netmap [-h]`, add a blank line after `Usage:`, and simplify the `Output:` section.
+- `netmap` with no arguments and `netmap -h` continue to print help without attempting ADC credential or provider initialization.
+- GitHub releases now use `vVERSION` as both the release tag and release title.
+- The embedded CLI version, repository `VERSION`, and release documentation now point to `1.1.0`.
