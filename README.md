@@ -1,12 +1,12 @@
 # netmap
 
-`netmap` is a opinionated CLI built in G0 1.26 that resolves destination GCP projects from a local YAML inventory and maps source dedicated interconnects to destination VLAN attachments, Cloud Routers, interfaces, and BGP peers.
+`netmap` is a opinionated CLI built in G0 1.26 that resolves GCP projects from a local YAML inventory and maps either source dedicated interconnects or source VPN resources to their connected destination resources, Cloud Routers, interfaces, and BGP peers.
 
 ## Requirements
 
 - Go `1.26.x` to build the binary
 - Google Application Default Credentials available in the environment
-- IAM permissions that allow listing interconnects, interconnect attachments, routers, and router status
+- IAM permissions that allow listing interconnects, interconnect attachments, VPN gateways, VPN tunnels, routers, and router status
 
 ## Config
 
@@ -48,7 +48,7 @@ Selector expansion is:
 ```
 
 ```text
-./netmap version prints the embedded CLI version, currently v1.2.0.
+./netmap version prints the embedded CLI version, currently v2.0.0.
 ./netmap and ./netmap -h print the help menu without requiring ADC credentials.
 All CLI parameter checks and config-file semantic validation complete before netmap initializes the Compute provider, checks ADC validity, or talks to the Compute API.
 ```
@@ -83,9 +83,9 @@ GOCACHE=/tmp/go-build-cache /usr/local/go/bin/go run ./cmd/netmap \
 
 ## Release
 
-- `VERSION` is the release source of truth and currently contains `1.2.0`
-- The release workflow prepends `v` when creating and checking release tags, so `VERSION=1.2.0` produces release tag `v1.2.0`
-- The GitHub release title is also set to `v1.2.0`
+- `VERSION` is the release source of truth and currently contains `2.0.0`
+- The release workflow prepends `v` when creating and checking release tags, so `VERSION=2.0.0` produces release tag `v2.0.0`
+- The GitHub release title is also set to `v2.0.0`
 - PR validation runs in workflow `NetMap Test` from `.github/workflows/netmap-test.yml`
 - Release publishing runs in workflow `NetMap Release` from `.github/workflows/netmap-release.yml`
 - The GitHub Actions job labels are:
@@ -99,7 +99,7 @@ GOCACHE=/tmp/go-build-cache /usr/local/go/bin/go run ./cmd/netmap \
   - `netmap_<version>_darwin_amd64.tar.gz`
   - `netmap_<version>_windows_amd64.zip`
 - Each archive contains only `README.md` and the platform binary
-- `CHANGELOG.md` contains the shipped release history for versions such as `v1.2.0` and is used as the GitHub release notes source
+- `CHANGELOG.md` contains the shipped release history for versions such as `v2.0.0` and is used as the GitHub release notes source
 
 ## Usage
 
@@ -156,27 +156,24 @@ Behavior:
 
 ```text
 -p is rejected.
-Returns a clear "vpn is not implemented yet" message.
+Resolves selected config tuples as source projects.
+Lists source HA and Classic VPN gateways and connected VPN tunnels.
+Uses HA tunnel peer gateway references to discover destination GCP projects, VPN gateways, tunnels, and Cloud Routers.
+Includes Classic VPN gateways and tunnels as source-side unmapped output when no peer GCP project can be discovered.
+Uses a VPN-specific Mermaid grouping strategy that shares src_project -> src_region and dst_project -> dst_region pairs as separate nodes.
+Uses the same csv, tsv, json, tree, mermaid, and html output formats as interconnect reports.
 ```
 
 ## Output
 
-```text
-Default:
-  omitted -f -> netmap-interconnect-<src-project>-to-<dst-project>-<timestamp>.mmd
+| Case | Interconnect | VPN |
+| --- | --- | --- |
+| Default output with omitted `-f` | `netmap-interconnect-<src>-to-<dst>-<timestamp>.mmd` | `netmap-vpn-<src>-to-<dst>-<timestamp>.mmd` |
+| Explicit format extensions | `html`, `csv`, `tsv`, `json`, `tree.txt` on the `netmap-interconnect-<src>-to-<dst>-<timestamp>` base | `html`, `csv`, `tsv`, `json`, `tree.txt` on the `netmap-vpn-<src>-to-<dst>-<timestamp>` base |
+| Aggregate output | `netmap-interconnect-<src>-to-<org>-all-<timestamp>.<ext>` | `netmap-vpn-<org>-all-<timestamp>.<ext>` |
+| Source naming input | `<src>` comes from `-p` | `<src>` comes from the resolved source project when exactly one source project and one destination project are discovered; aggregate VPN output omits a source segment |
 
-Explicit formats:
-  -f html -> netmap-interconnect-<src>-to-<dst>-<timestamp>.html
-  -f csv  -> netmap-interconnect-<src>-to-<dst>-<timestamp>.csv
-  -f tsv  -> netmap-interconnect-<src>-to-<dst>-<timestamp>.tsv
-  -f json -> netmap-interconnect-<src>-to-<dst>-<timestamp>.json
-  -f tree -> netmap-interconnect-<src>-to-<dst>-<timestamp>.tree.txt
-
-Org fanout:
-  netmap-interconnect-<src>-to-<org>-all-<timestamp>.<ext>
-
--f html writes a self-contained offline Mermaid viewer page that can be opened directly in a browser.
-```
+`-f html` writes a self-contained offline Mermaid viewer page that can be opened directly in a browser.
 
 On success, the CLI prints a merged final summary row containing:
 
@@ -190,7 +187,7 @@ Use that path directly when opening or sharing the generated file.
 ### CSV/TSV columns
 
 ```text
-org,workload,environment,src_project,src_interconnect,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vpc,dst_vlan_attachment,dst_vlan_attachment_state,dst_vlan_attachment_vlanid,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,remote_bgp_peer_asn,bgp_peering_status
+org,workload,environment,src_project,src_interconnect,src_vpn_gateway,src_vpn_gateway_type,src_vpn_gateway_status,src_vpn_tunnel,src_vpn_tunnel_status,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vpc,dst_vlan_attachment,dst_vlan_attachment_state,dst_vlan_attachment_vlanid,dst_vpn_gateway,dst_vpn_gateway_type,dst_vpn_gateway_status,dst_vpn_tunnel,dst_vpn_tunnel_status,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,remote_bgp_peer_asn,bgp_peering_status
 ```
 
 ## Notes
@@ -202,7 +199,9 @@ org,workload,environment,src_project,src_interconnect,mapped,src_region,src_stat
 - Destination Cloud Router ASN is emitted in the canonical destination router field block when available
 - Remote BGP peer ASN is emitted in the canonical peer field block when available
 - Unmapped source interconnects are still included in the output
+- Unmapped source Classic VPN gateways and tunnels are also included in the output when peer GCP project discovery is unavailable
 - Mermaid output is a shared-node DAG and may intentionally collapse matching labels across workload, environment, source-project, interconnect, and destination-region layers
+- VPN Mermaid output uses a separate node-key strategy that collapses repeated `src_project -> src_region` and `dst_project -> dst_region` pairs while keeping project and region as separate nodes
 - In Mermaid, shared VPCs are folded into the region node; mixed VPCs are rendered as separate `dst_vpc` nodes between region and attachment
 - Mermaid renders `bgp_peering_status` as its own node between the interface and remote peer nodes
 - Mermaid labels use `<br>` line breaks so they render correctly in Mermaid-compatible viewers, including the offline HTML output

@@ -84,6 +84,86 @@ func sampleReport() model.Report {
 	}
 }
 
+func sampleVPNReport() model.Report {
+	return model.Report{
+		Type: "vpn",
+		Selectors: model.Selectors{
+			Org: "dbc",
+		},
+		Items: []model.MappingItem{
+			{
+				Org:                 "dbc",
+				Workload:            "native",
+				Environment:         "dev",
+				SrcProject:          "src-a",
+				SrcRegion:           "us-central1",
+				SrcVPNGateway:       "ha-a",
+				SrcVPNGatewayType:   "ha",
+				SrcVPNGatewayStatus: "unknown",
+				SrcVPNTunnel:        "tunnel-a-1",
+				SrcVPNTunnelStatus:  "ESTABLISHED",
+				Mapped:              true,
+				DstProject:          "dst-a",
+				DstRegion:           "us-central1",
+				DstVPNGateway:       "ha-peer",
+				DstVPNGatewayType:   "ha",
+				DstVPNGatewayStatus: "unknown",
+				DstVPNTunnel:        "tunnel-peer-1",
+				DstVPNTunnelStatus:  "ESTABLISHED",
+				DstVPC:              "vpc-a",
+				DstCloudRouter:      "router-a",
+				DstCloudRouterASN:   "64512",
+			},
+			{
+				Org:                 "dbc",
+				Workload:            "native",
+				Environment:         "dev",
+				SrcProject:          "src-a",
+				SrcRegion:           "us-central1",
+				SrcVPNGateway:       "ha-a",
+				SrcVPNGatewayType:   "ha",
+				SrcVPNGatewayStatus: "unknown",
+				SrcVPNTunnel:        "tunnel-a-2",
+				SrcVPNTunnelStatus:  "ESTABLISHED",
+				Mapped:              true,
+				DstProject:          "dst-a",
+				DstRegion:           "us-central1",
+				DstVPNGateway:       "ha-peer",
+				DstVPNGatewayType:   "ha",
+				DstVPNGatewayStatus: "unknown",
+				DstVPNTunnel:        "tunnel-peer-2",
+				DstVPNTunnelStatus:  "ESTABLISHED",
+				DstVPC:              "vpc-a",
+				DstCloudRouter:      "router-b",
+				DstCloudRouterASN:   "64513",
+			},
+			{
+				Org:                 "dbc",
+				Workload:            "native",
+				Environment:         "dev",
+				SrcProject:          "src-b",
+				SrcRegion:           "europe-west1",
+				SrcVPNGateway:       "ha-b",
+				SrcVPNGatewayType:   "ha",
+				SrcVPNGatewayStatus: "unknown",
+				SrcVPNTunnel:        "tunnel-b-1",
+				SrcVPNTunnelStatus:  "ESTABLISHED",
+				Mapped:              true,
+				DstProject:          "dst-b",
+				DstRegion:           "europe-west1",
+				DstVPNGateway:       "ha-peer-b",
+				DstVPNGatewayType:   "ha",
+				DstVPNGatewayStatus: "unknown",
+				DstVPNTunnel:        "tunnel-peer-b-1",
+				DstVPNTunnelStatus:  "ESTABLISHED",
+				DstVPC:              "vpc-b",
+				DstCloudRouter:      "router-c",
+				DstCloudRouterASN:   "64514",
+			},
+		},
+	}
+}
+
 func TestRenderCSV(t *testing.T) {
 	data, ext, err := Render(sampleReport(), FormatCSV)
 	if err != nil {
@@ -96,10 +176,10 @@ func TestRenderCSV(t *testing.T) {
 	if strings.Contains(content, "dst_cloud_router_state") {
 		t.Fatalf("unexpected router state column in csv: %s", content)
 	}
-	if !strings.Contains(content, "org,workload,environment,src_project,src_interconnect,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vpc,dst_vlan_attachment") {
+	if !strings.Contains(content, "org,workload,environment,src_project,src_interconnect,src_vpn_gateway,src_vpn_gateway_type,src_vpn_gateway_status,src_vpn_tunnel,src_vpn_tunnel_status,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vpc,dst_vlan_attachment") {
 		t.Fatalf("unexpected csv header order: %s", content)
 	}
-	if !strings.Contains(content, "dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,remote_bgp_peer_asn,bgp_peering_status") {
+	if !strings.Contains(content, "dst_vpn_gateway,dst_vpn_gateway_type,dst_vpn_gateway_status,dst_vpn_tunnel,dst_vpn_tunnel_status,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,remote_bgp_peer_asn,bgp_peering_status") {
 		t.Fatalf("unexpected csv tail column order: %s", content)
 	}
 }
@@ -421,6 +501,100 @@ func TestRenderMermaidAddsSeparateVPCNodeWhenRegionHasMultipleVPCs(t *testing.T)
 	}
 	if countSubstring(content, "dst_vpc: vpc-a") != 1 || countSubstring(content, "dst_vpc: vpc-b") != 1 {
 		t.Fatalf("expected separate dst_vpc nodes, got %s", content)
+	}
+}
+
+func TestRenderVPNMermaidCollapsesProjectRegionPairsIntoSeparateNodes(t *testing.T) {
+	data, ext, err := Render(sampleVPNReport(), FormatMermaid)
+	if err != nil {
+		t.Fatalf("render vpn mermaid: %v", err)
+	}
+	if ext != "mmd" {
+		t.Fatalf("expected mmd extension, got %q", ext)
+	}
+
+	content := string(data)
+	if !strings.Contains(content, "src_vpn_gateway: ha-a") || !strings.Contains(content, "dst_vpn_gateway: ha-peer") {
+		t.Fatalf("expected vpn gateway labels, got %s", content)
+	}
+	if countSubstring(content, "src_project: src-a") != 1 {
+		t.Fatalf("expected one shared src-a project node, got %d in %s", countSubstring(content, "src_project: src-a"), content)
+	}
+	if countSubstring(content, "src_region: us-central1") != 1 {
+		t.Fatalf("expected one shared src region node for src-a/us-central1, got %d in %s", countSubstring(content, "src_region: us-central1"), content)
+	}
+	if countSubstring(content, "dst_project: dst-a") != 1 {
+		t.Fatalf("expected one shared dst-a project node, got %d in %s", countSubstring(content, "dst_project: dst-a"), content)
+	}
+	if countSubstring(content, "dst_region: us-central1") != 1 {
+		t.Fatalf("expected one shared dst region node for dst-a/us-central1, got %d in %s", countSubstring(content, "dst_region: us-central1"), content)
+	}
+	if strings.Contains(content, "src_interconnect:") {
+		t.Fatalf("unexpected interconnect nodes in vpn mermaid output: %s", content)
+	}
+}
+
+func TestRenderVPNMermaidKeepsSameRegionLabelsSeparateAcrossDifferentProjects(t *testing.T) {
+	report := model.Report{
+		Type: "vpn",
+		Selectors: model.Selectors{
+			Org: "dbc",
+		},
+		Items: []model.MappingItem{
+			{
+				Org:                 "dbc",
+				Workload:            "native",
+				Environment:         "dev",
+				SrcProject:          "src-a",
+				SrcRegion:           "us-central1",
+				SrcVPNGateway:       "ha-a",
+				SrcVPNGatewayType:   "ha",
+				SrcVPNGatewayStatus: "unknown",
+				SrcVPNTunnel:        "tunnel-a",
+				SrcVPNTunnelStatus:  "ESTABLISHED",
+				Mapped:              true,
+				DstProject:          "dst-a",
+				DstRegion:           "us-central1",
+				DstVPNGateway:       "dst-ha-a",
+				DstVPNGatewayType:   "ha",
+				DstVPNGatewayStatus: "unknown",
+				DstVPNTunnel:        "dst-tunnel-a",
+				DstVPNTunnelStatus:  "ESTABLISHED",
+			},
+			{
+				Org:                 "dbc",
+				Workload:            "platform",
+				Environment:         "dev",
+				SrcProject:          "src-b",
+				SrcRegion:           "us-central1",
+				SrcVPNGateway:       "ha-b",
+				SrcVPNGatewayType:   "ha",
+				SrcVPNGatewayStatus: "unknown",
+				SrcVPNTunnel:        "tunnel-b",
+				SrcVPNTunnelStatus:  "ESTABLISHED",
+				Mapped:              true,
+				DstProject:          "dst-b",
+				DstRegion:           "us-central1",
+				DstVPNGateway:       "dst-ha-b",
+				DstVPNGatewayType:   "ha",
+				DstVPNGatewayStatus: "unknown",
+				DstVPNTunnel:        "dst-tunnel-b",
+				DstVPNTunnelStatus:  "ESTABLISHED",
+			},
+		},
+	}
+
+	data, _, err := Render(report, FormatMermaid)
+	if err != nil {
+		t.Fatalf("render vpn mermaid: %v", err)
+	}
+
+	content := string(data)
+	if countSubstring(content, "src_region: us-central1") != 2 {
+		t.Fatalf("expected separate src region nodes per src project, got %d in %s", countSubstring(content, "src_region: us-central1"), content)
+	}
+	if countSubstring(content, "dst_region: us-central1") != 2 {
+		t.Fatalf("expected separate dst region nodes per dst project, got %d in %s", countSubstring(content, "dst_region: us-central1"), content)
 	}
 }
 

@@ -32,9 +32,15 @@ func (m *memoryFileStore) WriteFile(name string, data []byte) error {
 type mockProvider struct {
 	interconnects          []model.DedicatedInterconnect
 	attachments            []model.VLANAttachment
+	vpnGateways            []model.VPNGateway
+	targetVPNGateways      []model.VPNGateway
+	vpnTunnels             []model.VPNTunnel
 	routers                []model.CloudRouter
 	statuses               map[string]model.RouterStatus
 	attachmentsByProject   map[string][]model.VLANAttachment
+	vpnGatewaysByProject   map[string][]model.VPNGateway
+	targetVPNByProject     map[string][]model.VPNGateway
+	vpnTunnelsByProject    map[string][]model.VPNTunnel
 	routersByProject       map[string][]model.CloudRouter
 	statusesByProjectRoute map[string]model.RouterStatus
 	attachmentCalls        map[string]int
@@ -54,6 +60,27 @@ func (m mockProvider) ListVLANAttachments(_ context.Context, project string) ([]
 		return m.attachmentsByProject[project], nil
 	}
 	return m.attachments, nil
+}
+
+func (m mockProvider) ListVPNGateways(_ context.Context, project string) ([]model.VPNGateway, error) {
+	if len(m.vpnGatewaysByProject) > 0 {
+		return m.vpnGatewaysByProject[project], nil
+	}
+	return m.vpnGateways, nil
+}
+
+func (m mockProvider) ListTargetVPNGateways(_ context.Context, project string) ([]model.VPNGateway, error) {
+	if len(m.targetVPNByProject) > 0 {
+		return m.targetVPNByProject[project], nil
+	}
+	return m.targetVPNGateways, nil
+}
+
+func (m mockProvider) ListVPNTunnels(_ context.Context, project string) ([]model.VPNTunnel, error) {
+	if len(m.vpnTunnelsByProject) > 0 {
+		return m.vpnTunnelsByProject[project], nil
+	}
+	return m.vpnTunnels, nil
 }
 
 func (m mockProvider) ListCloudRouters(_ context.Context, project string) ([]model.CloudRouter, error) {
@@ -172,7 +199,16 @@ func TestParseOptionsHelp(t *testing.T) {
 	if strings.Contains(opts.Usage, "Stderr shows an ASCII 2-column task table") || strings.Contains(opts.Usage, "Completed rows use a tick marker") || strings.Contains(opts.Usage, "The final merged row prints Output: <path> and Total Time: <duration>.") {
 		t.Fatalf("expected simplified output section, got %+v", opts)
 	}
-	if !strings.Contains(opts.Usage, "Org fanout output:   netmap-interconnect-<src>-to-<org>-all-<timestamp>.<ext>\n\n  Use -f html to write a self-contained offline Mermaid viewer page.") {
+	if !strings.Contains(opts.Usage, "Org fanout output:   netmap-interconnect-<src>-to-<org>-all-<timestamp>.<ext>") {
+		t.Fatalf("expected org fanout output guidance, got %+v", opts)
+	}
+	if !strings.Contains(opts.Usage, "VPN output file:     netmap-vpn-<src>-to-<dst>-<timestamp>.<ext>") {
+		t.Fatalf("expected vpn output guidance, got %+v", opts)
+	}
+	if !strings.Contains(opts.Usage, "VPN aggregate file:  netmap-vpn-<org>-all-<timestamp>.<ext>") {
+		t.Fatalf("expected vpn aggregate output guidance, got %+v", opts)
+	}
+	if !strings.Contains(opts.Usage, "Use -f html to write a self-contained offline Mermaid viewer page.") {
 		t.Fatalf("expected blank line before html viewer note, got %+v", opts)
 	}
 }
@@ -567,15 +603,115 @@ func TestRunWithOrgFanoutWritesCombinedOutput(t *testing.T) {
 	}
 }
 
-func TestVPNNotImplemented(t *testing.T) {
+func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 	store := &memoryFileStore{
 		files: map[string][]byte{
 			"config.yaml": []byte(validConfig),
 		},
 	}
-	app, err := New(store, mockProvider{})
+	app, err := New(store, mockProvider{
+		vpnGatewaysByProject: map[string][]model.VPNGateway{
+			"project": {{
+				Name:     "ha-src",
+				Region:   "us-central1",
+				Network:  "src-vpc",
+				Type:     "ha",
+				Status:   "unknown",
+				SelfLink: "https://www.googleapis.com/compute/v1/projects/project/regions/us-central1/vpnGateways/ha-src",
+			}},
+			"peer-project": {{
+				Name:     "ha-dst",
+				Region:   "us-central1",
+				Network:  "dst-vpc",
+				Type:     "ha",
+				Status:   "unknown",
+				SelfLink: "https://www.googleapis.com/compute/v1/projects/peer-project/regions/us-central1/vpnGateways/ha-dst",
+			}},
+		},
+		vpnTunnelsByProject: map[string][]model.VPNTunnel{
+			"project": {{
+				Name:                "tunnel-src",
+				Region:              "us-central1",
+				Status:              "ESTABLISHED",
+				VPNGateway:          "ha-src",
+				PeerGCPGateway:      "https://www.googleapis.com/compute/v1/projects/peer-project/regions/us-central1/vpnGateways/ha-dst",
+				Router:              "router-src",
+				VPNGatewayInterface: "0",
+			}},
+			"peer-project": {{
+				Name:                "tunnel-dst",
+				Region:              "us-central1",
+				Status:              "ESTABLISHED",
+				VPNGateway:          "ha-dst",
+				PeerGCPGateway:      "https://www.googleapis.com/compute/v1/projects/project/regions/us-central1/vpnGateways/ha-src",
+				Router:              "router-dst",
+				VPNGatewayInterface: "0",
+			}},
+		},
+		routersByProject: map[string][]model.CloudRouter{
+			"project": {{
+				Name:    "router-src",
+				Region:  "us-central1",
+				ASN:     "64512",
+				Network: "src-vpc",
+				Interfaces: []model.RouterInterface{{
+					Name:            "if-src",
+					LinkedVPNTunnel: "tunnel-src",
+					IPRange:         "169.254.1.1/30",
+				}},
+			}},
+			"peer-project": {{
+				Name:    "router-dst",
+				Region:  "us-central1",
+				ASN:     "64513",
+				Network: "dst-vpc",
+				Interfaces: []model.RouterInterface{{
+					Name:            "if-dst",
+					LinkedVPNTunnel: "tunnel-dst",
+					IPRange:         "169.254.1.2/30",
+				}},
+				BGPPeers: []model.BGPPeer{{
+					Name:         "peer-dst",
+					Interface:    "if-dst",
+					LocalIP:      "169.254.1.2",
+					RemoteIP:     "169.254.1.1",
+					PeerASN:      "64512",
+					SessionState: "UP",
+				}},
+			}},
+		},
+		statusesByProjectRoute: map[string]model.RouterStatus{
+			"project/us-central1/router-src": {
+				RouterName: "router-src",
+				Region:     "us-central1",
+			},
+			"peer-project/us-central1/router-dst": {
+				RouterName: "router-dst",
+				Region:     "us-central1",
+				Peers: []model.BGPPeerStatus{{
+					Name:         "peer-dst",
+					LocalIP:      "169.254.1.2",
+					RemoteIP:     "169.254.1.1",
+					SessionState: "UP",
+				}},
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("new app: %v", err)
+	}
+	app.now = func() time.Time {
+		return time.Date(2026, time.March, 28, 0, 0, 0, 0, time.UTC)
+	}
+	var status bytes.Buffer
+	app.status = &status
+
+	projectItems, err := app.buildVPNProjectItems(context.Background(), "project", map[string]vpnProjectData{})
+	if err != nil {
+		t.Fatalf("build vpn project items: %v", err)
+	}
+	if len(projectItems) == 0 {
+		t.Fatalf("expected vpn project items to be built")
 	}
 
 	err = app.Run(context.Background(), []string{
@@ -584,8 +720,96 @@ func TestVPNNotImplemented(t *testing.T) {
 		"-w", "native",
 		"-e", "dev",
 	})
-	if err == nil || !strings.Contains(err.Error(), "vpn is not implemented yet") {
-		t.Fatalf("expected vpn not implemented error, got %v", err)
+	if err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+
+	data, ok := store.files["netmap-vpn-project-to-peer-project-20260328T000000Z.mmd"]
+	if !ok {
+		t.Fatalf("expected vpn mermaid output file to be written, got files: %#v", store.files)
+	}
+	content := string(data)
+	if !strings.Contains(content, "src_vpn_gateway: ha-src") || !strings.Contains(content, "src_vpn_tunnel: tunnel-src") {
+		t.Fatalf("expected vpn source nodes in mermaid output, got: %s", content)
+	}
+	if !strings.Contains(content, "dst_vpn_gateway: ha-dst") || !strings.Contains(content, "dst_vpn_tunnel: tunnel-dst") {
+		t.Fatalf("expected vpn destination nodes in mermaid output, got: %s", content)
+	}
+	if !strings.Contains(content, "dst_cloud_router: router-dst") || !strings.Contains(content, "remote_bgp_peer: peer-dst") {
+		t.Fatalf("expected destination router and peer details in mermaid output, got: %s", content)
+	}
+	if strings.Contains(content, "src_interconnect:") {
+		t.Fatalf("unexpected interconnect node in vpn mermaid output: %s", content)
+	}
+	statusOutput := status.String()
+	if !strings.Contains(statusOutput, "Output: netmap-vpn-project-to-peer-project-20260328T000000Z.mmd") || !strings.Contains(statusOutput, "Total Time: 0s") {
+		t.Fatalf("expected vpn final summary row, got: %s", statusOutput)
+	}
+}
+
+func TestBuildVPNProjectItemsIncludesClassicUnmappedTunnel(t *testing.T) {
+	store := &memoryFileStore{files: map[string][]byte{}}
+	app, err := New(store, mockProvider{
+		targetVPNByProject: map[string][]model.VPNGateway{
+			"project": {{
+				Name:     "classic-src",
+				Region:   "us-central1",
+				Network:  "src-vpc",
+				Type:     "classic",
+				Status:   "READY",
+				SelfLink: "https://www.googleapis.com/compute/v1/projects/project/regions/us-central1/targetVpnGateways/classic-src",
+			}},
+		},
+		vpnTunnelsByProject: map[string][]model.VPNTunnel{
+			"project": {{
+				Name:             "classic-tunnel",
+				Region:           "us-central1",
+				Status:           "ESTABLISHED",
+				TargetVPNGateway: "classic-src",
+				Router:           "router-src",
+				PeerIP:           "203.0.113.10",
+			}},
+		},
+		routersByProject: map[string][]model.CloudRouter{
+			"project": {{
+				Name:    "router-src",
+				Region:  "us-central1",
+				ASN:     "64512",
+				Network: "src-vpc",
+				Interfaces: []model.RouterInterface{{
+					Name:            "if-src",
+					LinkedVPNTunnel: "classic-tunnel",
+					IPRange:         "169.254.10.1/30",
+				}},
+			}},
+		},
+		statusesByProjectRoute: map[string]model.RouterStatus{
+			"project/us-central1/router-src": {
+				RouterName: "router-src",
+				Region:     "us-central1",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new app: %v", err)
+	}
+
+	items, err := app.buildVPNProjectItems(context.Background(), "project", map[string]vpnProjectData{})
+	if err != nil {
+		t.Fatalf("build vpn project items: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected one classic vpn item, got %d", len(items))
+	}
+	item := items[0]
+	if item.Mapped {
+		t.Fatalf("expected classic vpn item to remain unmapped, got %+v", item)
+	}
+	if item.SrcVPNGateway != "classic-src" || item.SrcVPNGatewayType != "classic" || item.SrcVPNTunnel != "classic-tunnel" {
+		t.Fatalf("expected classic vpn source fields, got %+v", item)
+	}
+	if item.DstProject != "" || item.DstVPNGateway != "" || item.DstVPNTunnel != "" {
+		t.Fatalf("expected no destination mapping for classic vpn item, got %+v", item)
 	}
 }
 
@@ -759,7 +983,7 @@ func TestRunWithDuplicateProjectFanoutCachesDiscoveryAndLogsEachTuple(t *testing
 	if count := strings.Count(data, "dbc,platform,dev,src-project"); count != 1 {
 		t.Fatalf("expected one platform/dev csv branch, got %d in %s", count, data)
 	}
-	if !strings.Contains(data, ",global,ACTIVE,true,shared-key,shared-project,us-central1,shared-vpc,attachment-shared,ACTIVE,,router-shared,64540,if-shared,169.254.30.1,peer-shared,169.254.30.2,64560,UP") {
+	if !strings.Contains(data, ",,,,,true,global,ACTIVE,true,shared-key,shared-project,us-central1,shared-vpc,attachment-shared,ACTIVE,,,,,,,router-shared,64540,if-shared,169.254.30.1,peer-shared,169.254.30.2,64560,UP") {
 		t.Fatalf("expected source macsec fields in csv output, got %s", data)
 	}
 }

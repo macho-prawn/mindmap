@@ -66,6 +66,89 @@ func (p *ComputeProvider) ListVLANAttachments(ctx context.Context, project strin
 	return items, nil
 }
 
+func (p *ComputeProvider) ListVPNGateways(ctx context.Context, project string) ([]model.VPNGateway, error) {
+	var items []model.VPNGateway
+	call := p.service.VpnGateways.AggregatedList(project).Context(ctx)
+	if err := call.Pages(ctx, func(page *compute.VpnGatewayAggregatedList) error {
+		for _, scoped := range page.Items {
+			for _, gateway := range scoped.VpnGateways {
+				if gateway == nil {
+					continue
+				}
+				items = append(items, model.VPNGateway{
+					Name:     gateway.Name,
+					Region:   basename(gateway.Region),
+					Network:  basename(gateway.Network),
+					Type:     "ha",
+					Status:   "",
+					SelfLink: gateway.SelfLink,
+				})
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("list vpn gateways for source project %q: %w", project, err)
+	}
+	return items, nil
+}
+
+func (p *ComputeProvider) ListTargetVPNGateways(ctx context.Context, project string) ([]model.VPNGateway, error) {
+	var items []model.VPNGateway
+	call := p.service.TargetVpnGateways.AggregatedList(project).Context(ctx)
+	if err := call.Pages(ctx, func(page *compute.TargetVpnGatewayAggregatedList) error {
+		for _, scoped := range page.Items {
+			for _, gateway := range scoped.TargetVpnGateways {
+				if gateway == nil {
+					continue
+				}
+				items = append(items, model.VPNGateway{
+					Name:     gateway.Name,
+					Region:   basename(gateway.Region),
+					Network:  basename(gateway.Network),
+					Type:     "classic",
+					Status:   firstNonEmpty(gateway.Status),
+					SelfLink: gateway.SelfLink,
+				})
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("list target vpn gateways for source project %q: %w", project, err)
+	}
+	return items, nil
+}
+
+func (p *ComputeProvider) ListVPNTunnels(ctx context.Context, project string) ([]model.VPNTunnel, error) {
+	var items []model.VPNTunnel
+	call := p.service.VpnTunnels.AggregatedList(project).Context(ctx)
+	if err := call.Pages(ctx, func(page *compute.VpnTunnelAggregatedList) error {
+		for _, scoped := range page.Items {
+			for _, tunnel := range scoped.VpnTunnels {
+				if tunnel == nil {
+					continue
+				}
+				items = append(items, model.VPNTunnel{
+					Name:                tunnel.Name,
+					Region:              basename(tunnel.Region),
+					Status:              firstNonEmpty(tunnel.Status, "unknown"),
+					SelfLink:            tunnel.SelfLink,
+					Router:              basename(tunnel.Router),
+					VPNGateway:          basename(tunnel.VpnGateway),
+					TargetVPNGateway:    basename(tunnel.TargetVpnGateway),
+					PeerGCPGateway:      tunnel.PeerGcpGateway,
+					PeerExternalGateway: tunnel.PeerExternalGateway,
+					PeerIP:              tunnel.PeerIp,
+					VPNGatewayInterface: formatOptionalInt(tunnel.VpnGatewayInterface),
+				})
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("list vpn tunnels for source project %q: %w", project, err)
+	}
+	return items, nil
+}
+
 func (p *ComputeProvider) ListCloudRouters(ctx context.Context, project string) ([]model.CloudRouter, error) {
 	var items []model.CloudRouter
 	call := p.service.Routers.AggregatedList(project).Context(ctx)
@@ -85,6 +168,7 @@ func (p *ComputeProvider) ListCloudRouters(ctx context.Context, project string) 
 					current.Interfaces = append(current.Interfaces, model.RouterInterface{
 						Name:                     iface.Name,
 						LinkedInterconnectAttach: basename(iface.LinkedInterconnectAttachment),
+						LinkedVPNTunnel:          basename(iface.LinkedVpnTunnel),
 						IPRange:                  iface.IpRange,
 					})
 				}

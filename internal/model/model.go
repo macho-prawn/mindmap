@@ -26,6 +26,7 @@ type VLANAttachment struct {
 type RouterInterface struct {
 	Name                     string
 	LinkedInterconnectAttach string
+	LinkedVPNTunnel          string
 	IPRange                  string
 }
 
@@ -47,6 +48,29 @@ type CloudRouter struct {
 	BGPPeers   []BGPPeer
 }
 
+type VPNGateway struct {
+	Name     string
+	Region   string
+	Network  string
+	Type     string
+	Status   string
+	SelfLink string
+}
+
+type VPNTunnel struct {
+	Name                string
+	Region              string
+	Status              string
+	SelfLink            string
+	Router              string
+	VPNGateway          string
+	TargetVPNGateway    string
+	PeerGCPGateway      string
+	PeerExternalGateway string
+	PeerIP              string
+	VPNGatewayInterface string
+}
+
 type BGPPeerStatus struct {
 	Name         string
 	LocalIP      string
@@ -66,6 +90,11 @@ type MappingItem struct {
 	Environment               string `json:"environment"`
 	SrcProject                string `json:"src_project"`
 	SrcInterconnect           string `json:"src_interconnect"`
+	SrcVPNGateway             string `json:"src_vpn_gateway"`
+	SrcVPNGatewayType         string `json:"src_vpn_gateway_type"`
+	SrcVPNGatewayStatus       string `json:"src_vpn_gateway_status"`
+	SrcVPNTunnel              string `json:"src_vpn_tunnel"`
+	SrcVPNTunnelStatus        string `json:"src_vpn_tunnel_status"`
 	Mapped                    bool   `json:"mapped"`
 	SrcRegion                 string `json:"src_region"`
 	SrcState                  string `json:"src_state"`
@@ -77,6 +106,11 @@ type MappingItem struct {
 	DstVLANAttachment         string `json:"dst_vlan_attachment"`
 	DstVLANAttachmentState    string `json:"dst_vlan_attachment_state"`
 	DstVLANAttachmentVLANID   string `json:"dst_vlan_attachment_vlanid"`
+	DstVPNGateway             string `json:"dst_vpn_gateway"`
+	DstVPNGatewayType         string `json:"dst_vpn_gateway_type"`
+	DstVPNGatewayStatus       string `json:"dst_vpn_gateway_status"`
+	DstVPNTunnel              string `json:"dst_vpn_tunnel"`
+	DstVPNTunnelStatus        string `json:"dst_vpn_tunnel_status"`
 	DstCloudRouter            string `json:"dst_cloud_router"`
 	DstCloudRouterASN         string `json:"dst_cloud_router_asn"`
 	DstCloudRouterInterface   string `json:"dst_cloud_router_interface"`

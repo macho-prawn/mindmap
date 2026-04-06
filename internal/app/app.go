@@ -104,19 +104,19 @@ func (a *App) RunValidated(ctx context.Context, input ValidatedInput) error {
 		return nil
 	}
 
-	if opts.Type == TypeVPN {
-		scope := "selected destination projects"
-		projectIDs := uniqueProjectIDs(targets)
-		if len(projectIDs) == 1 {
-			scope = fmt.Sprintf("destination project %q", projectIDs[0])
-		}
-		return fmt.Errorf("vpn is not implemented yet for %s", scope)
-	}
-
 	a.startStatusTable()
 	defer a.stopStatusTable()
 
-	report, err := a.buildInterconnectReport(ctx, opts, targets)
+	var (
+		report model.Report
+		err    error
+	)
+	switch opts.Type {
+	case TypeVPN:
+		report, err = a.buildVPNReport(ctx, opts, targets)
+	default:
+		report, err = a.buildInterconnectReport(ctx, opts, targets)
+	}
 	if err != nil {
 		return err
 	}
@@ -240,6 +240,16 @@ var usageTextContent string
 
 func usageText() string { return usageTextContent }
 
+type vpnProjectData struct {
+	Gateways      []model.VPNGateway
+	Tunnels       []model.VPNTunnel
+	Routers       []model.CloudRouter
+	Statuses      map[string]model.RouterStatus
+	GatewayByKey  map[string]model.VPNGateway
+	GatewayByLink map[string]model.VPNGateway
+	RouterByKey   map[string]model.CloudRouter
+}
+
 func (a *App) buildInterconnectReport(ctx context.Context, opts Options, targets []config.ResolvedTarget) (model.Report, error) {
 	interconnects, err := a.provider.ListDedicatedInterconnects(ctx, opts.SourceProject)
 	if err != nil {
@@ -287,39 +297,7 @@ func (a *App) buildInterconnectReport(ctx context.Context, opts Options, targets
 		items = append(items, itemsForTarget(target, projectItems)...)
 		a.completeTask(label, a.now().Sub(startedAt))
 	}
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].Org != items[j].Org {
-			return items[i].Org < items[j].Org
-		}
-		if items[i].Workload != items[j].Workload {
-			return items[i].Workload < items[j].Workload
-		}
-		if items[i].Environment != items[j].Environment {
-			return items[i].Environment < items[j].Environment
-		}
-		if items[i].SrcProject != items[j].SrcProject {
-			return items[i].SrcProject < items[j].SrcProject
-		}
-		if items[i].SrcInterconnect != items[j].SrcInterconnect {
-			return items[i].SrcInterconnect < items[j].SrcInterconnect
-		}
-		if items[i].DstProject != items[j].DstProject {
-			return items[i].DstProject < items[j].DstProject
-		}
-		if items[i].DstRegion != items[j].DstRegion {
-			return items[i].DstRegion < items[j].DstRegion
-		}
-		if items[i].DstVLANAttachment != items[j].DstVLANAttachment {
-			return items[i].DstVLANAttachment < items[j].DstVLANAttachment
-		}
-		if items[i].DstCloudRouter != items[j].DstCloudRouter {
-			return items[i].DstCloudRouter < items[j].DstCloudRouter
-		}
-		if items[i].DstCloudRouterInterface != items[j].DstCloudRouterInterface {
-			return items[i].DstCloudRouterInterface < items[j].DstCloudRouterInterface
-		}
-		return items[i].RemoteBGPPeer < items[j].RemoteBGPPeer
-	})
+	sortMappingItems(items)
 
 	destinationProject := ""
 	projectIDs := uniqueProjectIDs(targets)
@@ -336,6 +314,251 @@ func (a *App) buildInterconnectReport(ctx context.Context, opts Options, targets
 			Environment: opts.Environment,
 		},
 		Items: items,
+	}, nil
+}
+
+func (a *App) buildVPNReport(ctx context.Context, opts Options, targets []config.ResolvedTarget) (model.Report, error) {
+	var items []model.MappingItem
+	var err error
+	itemsBySourceProject := make(map[string][]model.MappingItem, len(targets))
+	destinationProjects := make(map[string]struct{})
+	destCache := make(map[string]vpnProjectData)
+
+	for _, target := range targets {
+		label := taskLabel(target)
+		startedAt := a.now()
+		a.startTask(label)
+		failTask := func(err error) (model.Report, error) {
+			a.failTask(label, a.now().Sub(startedAt))
+			return model.Report{}, err
+		}
+
+		projectItems, ok := itemsBySourceProject[target.ProjectID]
+		if !ok {
+			projectItems, err = a.buildVPNProjectItems(ctx, target.ProjectID, destCache)
+			if err != nil {
+				return failTask(err)
+			}
+			itemsBySourceProject[target.ProjectID] = projectItems
+		}
+		for _, item := range projectItems {
+			if strings.TrimSpace(item.DstProject) != "" {
+				destinationProjects[item.DstProject] = struct{}{}
+			}
+		}
+
+		items = append(items, itemsForTarget(target, projectItems)...)
+		a.completeTask(label, a.now().Sub(startedAt))
+	}
+
+	sortMappingItems(items)
+
+	sourceProject := ""
+	sourceProjects := uniqueProjectIDs(targets)
+	if len(sourceProjects) == 1 {
+		sourceProject = sourceProjects[0]
+	}
+
+	destinationProject := ""
+	if len(destinationProjects) == 1 {
+		for projectID := range destinationProjects {
+			destinationProject = projectID
+		}
+	}
+
+	return model.Report{
+		Type:               opts.Type,
+		SourceProject:      sourceProject,
+		DestinationProject: destinationProject,
+		Selectors: model.Selectors{
+			Org:         opts.Org,
+			Workload:    opts.Workload,
+			Environment: opts.Environment,
+		},
+		Items: items,
+	}, nil
+}
+
+func (a *App) buildVPNProjectItems(ctx context.Context, sourceProject string, destCache map[string]vpnProjectData) ([]model.MappingItem, error) {
+	sourceData, err := a.discoverVPNProject(ctx, sourceProject)
+	if err != nil {
+		return nil, err
+	}
+	if len(sourceData.Gateways) == 0 {
+		return nil, fmt.Errorf("no vpn gateways found in source project %q", sourceProject)
+	}
+
+	tunnelsByGateway := make(map[string][]model.VPNTunnel)
+	for _, tunnel := range sourceData.Tunnels {
+		key := vpnTunnelGatewayKey(tunnel)
+		if key == "" {
+			continue
+		}
+		tunnelsByGateway[key] = append(tunnelsByGateway[key], tunnel)
+	}
+
+	var items []model.MappingItem
+	for _, gateway := range sourceData.Gateways {
+		tunnels := tunnelsByGateway[vpnGatewayKey(gateway.Type, gateway.Name)]
+		sort.Slice(tunnels, func(i, j int) bool {
+			if tunnels[i].Region != tunnels[j].Region {
+				return tunnels[i].Region < tunnels[j].Region
+			}
+			return tunnels[i].Name < tunnels[j].Name
+		})
+
+		if len(tunnels) == 0 {
+			items = append(items, vpnBaseItem(sourceProject, gateway, model.VPNTunnel{}))
+			continue
+		}
+
+		for _, tunnel := range tunnels {
+			base := vpnBaseItem(sourceProject, gateway, tunnel)
+
+			if strings.TrimSpace(tunnel.PeerGCPGateway) == "" {
+				items = append(items, base)
+				continue
+			}
+
+			dstProject := projectIDFromResourceURL(tunnel.PeerGCPGateway)
+			if strings.TrimSpace(dstProject) == "" {
+				items = append(items, base)
+				continue
+			}
+			base.Mapped = true
+			base.DstProject = dstProject
+
+			destData, ok := destCache[dstProject]
+			if !ok {
+				destData, err = a.discoverVPNProject(ctx, dstProject)
+				if err != nil {
+					return nil, err
+				}
+				destCache[dstProject] = destData
+			}
+
+			destGateway, ok := destData.GatewayByLink[strings.TrimSpace(tunnel.PeerGCPGateway)]
+			if !ok {
+				destGateway = destData.GatewayByKey[vpnGatewayKey("ha", resourceNameFromURL(tunnel.PeerGCPGateway))]
+			}
+			if strings.TrimSpace(destGateway.Name) != "" {
+				base.DstRegion = firstNonEmpty(base.DstRegion, destGateway.Region)
+				base.DstVPNGateway = destGateway.Name
+				base.DstVPNGatewayType = destGateway.Type
+				base.DstVPNGatewayStatus = firstNonEmpty(destGateway.Status, "unknown")
+				base.DstVPC = firstNonEmpty(base.DstVPC, destGateway.Network)
+			}
+
+			destTunnel, foundDestTunnel := matchDestinationVPNTunnel(tunnel, gateway, destGateway, destData.Tunnels)
+			if !foundDestTunnel {
+				items = append(items, base)
+				continue
+			}
+
+			base.DstRegion = firstNonEmpty(destTunnel.Region, base.DstRegion)
+			base.DstVPNTunnel = destTunnel.Name
+			base.DstVPNTunnelStatus = destTunnel.Status
+
+			destRouter := destData.RouterByKey[routerKey(destTunnel.Region, destTunnel.Router)]
+			base.DstVPC = firstNonEmpty(destRouter.Network, base.DstVPC)
+			base.DstCloudRouter = destRouter.Name
+			base.DstCloudRouterASN = destRouter.ASN
+
+			destInterfaces := interfacesForTunnel(destRouter, destTunnel.Name)
+			if len(destInterfaces) == 0 {
+				items = append(items, base)
+				continue
+			}
+
+			destPeersByInterface := peersForRouter(destRouter, destData.Statuses[routerKey(destRouter.Region, destRouter.Name)])
+			for _, iface := range destInterfaces {
+				peers := destPeersByInterface[iface.Name]
+				if len(peers) == 0 {
+					item := base
+					item.DstCloudRouterInterface = iface.Name
+					item.DstCloudRouterInterfaceIP = iface.IPRange
+					item.BGPPeeringStatus = "unknown"
+					items = append(items, item)
+					continue
+				}
+				for _, peer := range peers {
+					item := base
+					item.DstCloudRouterInterface = iface.Name
+					item.DstCloudRouterInterfaceIP = firstNonEmpty(peer.LocalIP, iface.IPRange)
+					item.RemoteBGPPeer = peer.Name
+					item.RemoteBGPPeerIP = peer.RemoteIP
+					item.RemoteBGPPeerASN = peer.PeerASN
+					item.BGPPeeringStatus = firstNonEmpty(peer.SessionState, "unknown")
+					items = append(items, item)
+				}
+			}
+		}
+	}
+
+	return items, nil
+}
+
+func (a *App) discoverVPNProject(ctx context.Context, project string) (vpnProjectData, error) {
+	haGateways, err := a.provider.ListVPNGateways(ctx, project)
+	if err != nil {
+		return vpnProjectData{}, err
+	}
+	classicGateways, err := a.provider.ListTargetVPNGateways(ctx, project)
+	if err != nil {
+		return vpnProjectData{}, err
+	}
+	tunnels, err := a.provider.ListVPNTunnels(ctx, project)
+	if err != nil {
+		return vpnProjectData{}, err
+	}
+	routers, err := a.provider.ListCloudRouters(ctx, project)
+	if err != nil {
+		return vpnProjectData{}, err
+	}
+
+	statuses := make(map[string]model.RouterStatus, len(routers))
+	for _, router := range routers {
+		status, err := a.provider.GetCloudRouterStatus(ctx, project, router.Region, router.Name)
+		if err != nil {
+			return vpnProjectData{}, err
+		}
+		statuses[routerKey(router.Region, router.Name)] = status
+	}
+
+	gateways := append([]model.VPNGateway{}, haGateways...)
+	gateways = append(gateways, classicGateways...)
+	sort.Slice(gateways, func(i, j int) bool {
+		if gateways[i].Region != gateways[j].Region {
+			return gateways[i].Region < gateways[j].Region
+		}
+		if gateways[i].Type != gateways[j].Type {
+			return gateways[i].Type < gateways[j].Type
+		}
+		return gateways[i].Name < gateways[j].Name
+	})
+
+	gatewayByKey := make(map[string]model.VPNGateway, len(gateways))
+	gatewayByLink := make(map[string]model.VPNGateway, len(gateways))
+	for _, gateway := range gateways {
+		gatewayByKey[vpnGatewayKey(gateway.Type, gateway.Name)] = gateway
+		if strings.TrimSpace(gateway.SelfLink) != "" {
+			gatewayByLink[strings.TrimSpace(gateway.SelfLink)] = gateway
+		}
+	}
+
+	routerByKey := make(map[string]model.CloudRouter, len(routers))
+	for _, router := range routers {
+		routerByKey[routerKey(router.Region, router.Name)] = router
+	}
+
+	return vpnProjectData{
+		Gateways:      gateways,
+		Tunnels:       tunnels,
+		Routers:       routers,
+		Statuses:      statuses,
+		GatewayByKey:  gatewayByKey,
+		GatewayByLink: gatewayByLink,
+		RouterByKey:   routerByKey,
 	}, nil
 }
 
@@ -468,6 +691,20 @@ func baseItem(srcProject, dstProject string, interconnect model.DedicatedInterco
 	}
 }
 
+func vpnBaseItem(srcProject string, gateway model.VPNGateway, tunnel model.VPNTunnel) model.MappingItem {
+	item := model.MappingItem{
+		SrcProject:          srcProject,
+		SrcRegion:           firstNonEmpty(tunnel.Region, gateway.Region),
+		SrcVPNGateway:       gateway.Name,
+		SrcVPNGatewayType:   gateway.Type,
+		SrcVPNGatewayStatus: firstNonEmpty(gateway.Status, "unknown"),
+		SrcVPNTunnel:        tunnel.Name,
+		SrcVPNTunnelStatus:  firstNonEmpty(tunnel.Status),
+		Mapped:              false,
+	}
+	return item
+}
+
 func itemsForTarget(target config.ResolvedTarget, base []model.MappingItem) []model.MappingItem {
 	items := make([]model.MappingItem, 0, len(base))
 	for _, item := range base {
@@ -484,6 +721,16 @@ func interfacesForAttachment(router model.CloudRouter, attachment string) []mode
 	var result []model.RouterInterface
 	for _, iface := range router.Interfaces {
 		if iface.LinkedInterconnectAttach == attachment {
+			result = append(result, iface)
+		}
+	}
+	return result
+}
+
+func interfacesForTunnel(router model.CloudRouter, tunnel string) []model.RouterInterface {
+	var result []model.RouterInterface
+	for _, iface := range router.Interfaces {
+		if iface.LinkedVPNTunnel == tunnel {
 			result = append(result, iface)
 		}
 	}
@@ -513,11 +760,21 @@ func peersForRouter(router model.CloudRouter, status model.RouterStatus) map[str
 }
 
 func defaultOutputPath(format string, opts Options, report model.Report, ext, timestamp string) string {
-	target := report.DestinationProject
-	if strings.TrimSpace(target) == "" {
-		target = opts.Org + "-all"
+	var base string
+	switch report.Type {
+	case TypeVPN:
+		if strings.TrimSpace(report.SourceProject) != "" && strings.TrimSpace(report.DestinationProject) != "" {
+			base = fmt.Sprintf("netmap-vpn-%s-to-%s-%s", report.SourceProject, report.DestinationProject, timestamp)
+		} else {
+			base = fmt.Sprintf("netmap-vpn-%s-all-%s", opts.Org, timestamp)
+		}
+	default:
+		target := report.DestinationProject
+		if strings.TrimSpace(target) == "" {
+			target = opts.Org + "-all"
+		}
+		base = fmt.Sprintf("netmap-interconnect-%s-to-%s-%s", opts.SourceProject, target, timestamp)
 	}
-	base := fmt.Sprintf("netmap-interconnect-%s-to-%s-%s", opts.SourceProject, target, timestamp)
 	if format == render.FormatJSON {
 		return base + ".json"
 	}
@@ -558,6 +815,126 @@ func uniqueProjectIDs(targets []config.ResolvedTarget) []string {
 		projectIDs = append(projectIDs, target.ProjectID)
 	}
 	return projectIDs
+}
+
+func sortMappingItems(items []model.MappingItem) {
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Org != items[j].Org {
+			return items[i].Org < items[j].Org
+		}
+		if items[i].Workload != items[j].Workload {
+			return items[i].Workload < items[j].Workload
+		}
+		if items[i].Environment != items[j].Environment {
+			return items[i].Environment < items[j].Environment
+		}
+		if items[i].SrcProject != items[j].SrcProject {
+			return items[i].SrcProject < items[j].SrcProject
+		}
+		if items[i].SrcRegion != items[j].SrcRegion {
+			return items[i].SrcRegion < items[j].SrcRegion
+		}
+		if items[i].SrcInterconnect != items[j].SrcInterconnect {
+			return items[i].SrcInterconnect < items[j].SrcInterconnect
+		}
+		if items[i].SrcVPNGateway != items[j].SrcVPNGateway {
+			return items[i].SrcVPNGateway < items[j].SrcVPNGateway
+		}
+		if items[i].SrcVPNTunnel != items[j].SrcVPNTunnel {
+			return items[i].SrcVPNTunnel < items[j].SrcVPNTunnel
+		}
+		if items[i].DstProject != items[j].DstProject {
+			return items[i].DstProject < items[j].DstProject
+		}
+		if items[i].DstRegion != items[j].DstRegion {
+			return items[i].DstRegion < items[j].DstRegion
+		}
+		if items[i].DstVLANAttachment != items[j].DstVLANAttachment {
+			return items[i].DstVLANAttachment < items[j].DstVLANAttachment
+		}
+		if items[i].DstVPNGateway != items[j].DstVPNGateway {
+			return items[i].DstVPNGateway < items[j].DstVPNGateway
+		}
+		if items[i].DstVPNTunnel != items[j].DstVPNTunnel {
+			return items[i].DstVPNTunnel < items[j].DstVPNTunnel
+		}
+		if items[i].DstCloudRouter != items[j].DstCloudRouter {
+			return items[i].DstCloudRouter < items[j].DstCloudRouter
+		}
+		if items[i].DstCloudRouterInterface != items[j].DstCloudRouterInterface {
+			return items[i].DstCloudRouterInterface < items[j].DstCloudRouterInterface
+		}
+		return items[i].RemoteBGPPeer < items[j].RemoteBGPPeer
+	})
+}
+
+func vpnGatewayKey(kind, name string) string {
+	if strings.TrimSpace(name) == "" {
+		return ""
+	}
+	return kind + "\x00" + name
+}
+
+func vpnTunnelGatewayKey(tunnel model.VPNTunnel) string {
+	if strings.TrimSpace(tunnel.VPNGateway) != "" {
+		return vpnGatewayKey("ha", tunnel.VPNGateway)
+	}
+	if strings.TrimSpace(tunnel.TargetVPNGateway) != "" {
+		return vpnGatewayKey("classic", tunnel.TargetVPNGateway)
+	}
+	return ""
+}
+
+func resourceNameFromURL(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	parts := strings.Split(strings.TrimRight(value, "/"), "/")
+	return parts[len(parts)-1]
+}
+
+func projectIDFromResourceURL(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(value, "/"), "/")
+	for idx := 0; idx < len(parts)-1; idx++ {
+		if parts[idx] == "projects" {
+			return parts[idx+1]
+		}
+	}
+	return ""
+}
+
+func matchDestinationVPNTunnel(sourceTunnel model.VPNTunnel, sourceGateway, destinationGateway model.VPNGateway, destinationTunnels []model.VPNTunnel) (model.VPNTunnel, bool) {
+	var candidates []model.VPNTunnel
+	for _, tunnel := range destinationTunnels {
+		if strings.TrimSpace(tunnel.PeerGCPGateway) == "" {
+			continue
+		}
+		if strings.TrimSpace(sourceGateway.SelfLink) != "" && strings.TrimSpace(tunnel.PeerGCPGateway) != strings.TrimSpace(sourceGateway.SelfLink) {
+			continue
+		}
+		if strings.TrimSpace(destinationGateway.Name) != "" && strings.TrimSpace(tunnel.VPNGateway) != "" && tunnel.VPNGateway != destinationGateway.Name {
+			continue
+		}
+		if strings.TrimSpace(sourceTunnel.VPNGatewayInterface) != "" && strings.TrimSpace(tunnel.VPNGatewayInterface) != "" && tunnel.VPNGatewayInterface != sourceTunnel.VPNGatewayInterface {
+			continue
+		}
+		candidates = append(candidates, tunnel)
+	}
+	if len(candidates) == 0 {
+		return model.VPNTunnel{}, false
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].Region != candidates[j].Region {
+			return candidates[i].Region < candidates[j].Region
+		}
+		return candidates[i].Name < candidates[j].Name
+	})
+	return candidates[0], true
 }
 
 func taskLabel(target config.ResolvedTarget) string {

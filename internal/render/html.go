@@ -99,9 +99,13 @@ func renderHTML(report model.Report) ([]byte, error) {
 }
 
 func htmlPageTitle(report model.Report) string {
+	source := report.SourceProject
+	if strings.TrimSpace(source) == "" {
+		source = report.Selectors.Org + " all"
+	}
 	target := report.DestinationProject
 	if strings.TrimSpace(target) == "" {
 		target = report.Selectors.Org + " all"
 	}
-	return fmt.Sprintf("netmap %s: %s to %s", report.Type, report.SourceProject, target)
+	return fmt.Sprintf("netmap %s: %s to %s", report.Type, source, target)
 }

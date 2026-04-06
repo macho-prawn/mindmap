@@ -22,6 +22,18 @@ func (stubDiscoveryProvider) ListVLANAttachments(context.Context, string) ([]mod
 	return nil, nil
 }
 
+func (stubDiscoveryProvider) ListVPNGateways(context.Context, string) ([]model.VPNGateway, error) {
+	return nil, nil
+}
+
+func (stubDiscoveryProvider) ListTargetVPNGateways(context.Context, string) ([]model.VPNGateway, error) {
+	return nil, nil
+}
+
+func (stubDiscoveryProvider) ListVPNTunnels(context.Context, string) ([]model.VPNTunnel, error) {
+	return nil, nil
+}
+
 func (stubDiscoveryProvider) ListCloudRouters(context.Context, string) ([]model.CloudRouter, error) {
 	return nil, nil
 }
@@ -38,7 +50,7 @@ func TestRunVersionCommand(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("expected success exit code, got %d", exitCode)
 	}
-	if strings.TrimSpace(stdout.String()) != "v1.2.0" {
+	if strings.TrimSpace(stdout.String()) != "v2.0.0" {
 		t.Fatalf("expected version output, got %q", stdout.String())
 	}
 	if stderr.Len() != 0 {
