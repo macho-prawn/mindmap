@@ -1276,11 +1276,13 @@ func renderVPNMermaid(report model.Report) []byte {
 			continue
 		}
 
-		dstTunnelID := mermaidID("vpn-dst-tunnel-" + item.Org + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVPNGateway + "-" + item.DstVPNTunnel)
-		dstRouterID := mermaidID("vpn-dst-router-" + item.Org + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVPNGateway + "-" + item.DstVPNTunnel + "-" + item.DstCloudRouter + "-" + item.DstCloudRouterInterface)
-		dstGatewayID := mermaidID("vpn-dst-gateway-" + item.Org + "-" + item.DstProject + "-" + item.DstRegion + "-" + item.DstVPNGateway + "-" + item.DstVPNGatewayType)
-		dstRegionID := mermaidID("vpn-dst-region-" + item.Org + "-" + item.DstProject + "-" + item.DstRegion)
-		dstProjectID := mermaidID("vpn-dst-project-" + item.Org + "-" + item.DstProject)
+		// Keep the destination branch scoped to the current source-tunnel/status path
+		// so distinct tunnel pairs never collapse into one shared Mermaid subtree.
+		dstTunnelID := mermaidID("vpn-dst-tunnel-" + statusID + "-" + item.DstVPNTunnel)
+		dstRouterID := mermaidID("vpn-dst-router-" + dstTunnelID + "-" + item.DstCloudRouter + "-" + item.DstCloudRouterInterface)
+		dstGatewayID := mermaidID("vpn-dst-gateway-" + dstRouterID + "-" + item.DstVPNGateway + "-" + item.DstVPNGatewayType)
+		dstRegionID := mermaidID("vpn-dst-region-" + dstGatewayID + "-" + item.DstRegion)
+		dstProjectID := mermaidID("vpn-dst-project-" + dstRegionID + "-" + item.DstProject)
 
 		linkIfMissing(&b, seen, statusID, dstTunnelID, vpnDestinationTunnelItemLabel(item))
 		linkIfMissing(&b, seen, dstTunnelID, dstRouterID, vpnDestinationRouterItemLabel(item))
