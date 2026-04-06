@@ -414,6 +414,7 @@ func (a *App) buildVPNProjectItems(ctx context.Context, sourceProject string, de
 
 		for _, tunnel := range tunnels {
 			base := vpnBaseItem(sourceProject, gateway, tunnel)
+			populateVPNSourceRouterFields(&base, sourceData, tunnel)
 
 			if strings.TrimSpace(tunnel.PeerGCPGateway) == "" {
 				items = append(items, base)
@@ -445,12 +446,12 @@ func (a *App) buildVPNProjectItems(ctx context.Context, sourceProject string, de
 				base.DstRegion = firstNonEmpty(base.DstRegion, destGateway.Region)
 				base.DstVPNGateway = destGateway.Name
 				base.DstVPNGatewayType = destGateway.Type
-				base.DstVPNGatewayStatus = firstNonEmpty(destGateway.Status, "unknown")
 				base.DstVPC = firstNonEmpty(base.DstVPC, destGateway.Network)
 			}
 
 			destTunnel, foundDestTunnel := matchDestinationVPNTunnel(tunnel, gateway, destGateway, destData.Tunnels)
 			if !foundDestTunnel {
+				base.BGPPeeringStatus = "unknown"
 				items = append(items, base)
 				continue
 			}
@@ -461,7 +462,7 @@ func (a *App) buildVPNProjectItems(ctx context.Context, sourceProject string, de
 
 			destRouter := destData.RouterByKey[routerKey(destTunnel.Region, destTunnel.Router)]
 			base.DstVPC = firstNonEmpty(destRouter.Network, base.DstVPC)
-			base.DstCloudRouter = destRouter.Name
+			base.DstCloudRouter = firstNonEmpty(destRouter.Name, destTunnel.Router)
 			base.DstCloudRouterASN = destRouter.ASN
 
 			destInterfaces := interfacesForTunnel(destRouter, destTunnel.Name)
@@ -693,16 +694,35 @@ func baseItem(srcProject, dstProject string, interconnect model.DedicatedInterco
 
 func vpnBaseItem(srcProject string, gateway model.VPNGateway, tunnel model.VPNTunnel) model.MappingItem {
 	item := model.MappingItem{
-		SrcProject:          srcProject,
-		SrcRegion:           firstNonEmpty(tunnel.Region, gateway.Region),
-		SrcVPNGateway:       gateway.Name,
-		SrcVPNGatewayType:   gateway.Type,
-		SrcVPNGatewayStatus: firstNonEmpty(gateway.Status, "unknown"),
-		SrcVPNTunnel:        tunnel.Name,
-		SrcVPNTunnelStatus:  firstNonEmpty(tunnel.Status),
-		Mapped:              false,
+		SrcProject:         srcProject,
+		SrcRegion:          firstNonEmpty(tunnel.Region, gateway.Region),
+		SrcVPNGateway:      gateway.Name,
+		SrcVPNGatewayType:  gateway.Type,
+		SrcVPNTunnel:       tunnel.Name,
+		SrcVPNTunnelStatus: firstNonEmpty(tunnel.Status),
+		Mapped:             false,
 	}
 	return item
+}
+
+func populateVPNSourceRouterFields(item *model.MappingItem, sourceData vpnProjectData, tunnel model.VPNTunnel) {
+	router := sourceData.RouterByKey[routerKey(tunnel.Region, tunnel.Router)]
+	item.SrcCloudRouter = firstNonEmpty(router.Name, tunnel.Router)
+	item.SrcCloudRouterASN = router.ASN
+
+	interfaces := interfacesForTunnel(router, tunnel.Name)
+	if len(interfaces) == 0 {
+		return
+	}
+
+	item.SrcCloudRouterInterface = interfaces[0].Name
+	item.SrcCloudRouterInterfaceIP = interfaces[0].IPRange
+
+	peersByInterface := peersForRouter(router, sourceData.Statuses[routerKey(router.Region, router.Name)])
+	peers := peersByInterface[interfaces[0].Name]
+	if len(peers) > 0 {
+		item.SrcCloudRouterInterfaceIP = firstNonEmpty(peers[0].LocalIP, interfaces[0].IPRange)
+	}
 }
 
 func itemsForTarget(target config.ResolvedTarget, base []model.MappingItem) []model.MappingItem {

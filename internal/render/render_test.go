@@ -92,73 +92,85 @@ func sampleVPNReport() model.Report {
 		},
 		Items: []model.MappingItem{
 			{
-				Org:                 "dbc",
-				Workload:            "native",
-				Environment:         "dev",
-				SrcProject:          "src-a",
-				SrcRegion:           "us-central1",
-				SrcVPNGateway:       "ha-a",
-				SrcVPNGatewayType:   "ha",
-				SrcVPNGatewayStatus: "unknown",
-				SrcVPNTunnel:        "tunnel-a-1",
-				SrcVPNTunnelStatus:  "ESTABLISHED",
-				Mapped:              true,
-				DstProject:          "dst-a",
-				DstRegion:           "us-central1",
-				DstVPNGateway:       "ha-peer",
-				DstVPNGatewayType:   "ha",
-				DstVPNGatewayStatus: "unknown",
-				DstVPNTunnel:        "tunnel-peer-1",
-				DstVPNTunnelStatus:  "ESTABLISHED",
-				DstVPC:              "vpc-a",
-				DstCloudRouter:      "router-a",
-				DstCloudRouterASN:   "64512",
+				Org:                       "dbc",
+				Workload:                  "native",
+				Environment:               "dev",
+				SrcProject:                "src-a",
+				SrcRegion:                 "us-central1",
+				SrcVPNGateway:             "ha-a",
+				SrcVPNGatewayType:         "ha",
+				SrcCloudRouter:            "router-src-a",
+				SrcCloudRouterASN:         "64510",
+				SrcCloudRouterInterface:   "if-src-a-1",
+				SrcCloudRouterInterfaceIP: "169.254.10.1",
+				SrcVPNTunnel:              "tunnel-a-1",
+				SrcVPNTunnelStatus:        "ESTABLISHED",
+				Mapped:                    true,
+				DstProject:                "dst-a",
+				DstRegion:                 "us-central1",
+				DstVPNGateway:             "ha-peer",
+				DstVPNGatewayType:         "ha",
+				DstVPNTunnel:              "tunnel-peer-1",
+				DstVPNTunnelStatus:        "ESTABLISHED",
+				DstCloudRouter:            "router-a",
+				DstCloudRouterASN:         "64512",
+				DstCloudRouterInterface:   "if-dst-a-1",
+				DstCloudRouterInterfaceIP: "169.254.20.1",
+				BGPPeeringStatus:          "UP",
 			},
 			{
-				Org:                 "dbc",
-				Workload:            "native",
-				Environment:         "dev",
-				SrcProject:          "src-a",
-				SrcRegion:           "us-central1",
-				SrcVPNGateway:       "ha-a",
-				SrcVPNGatewayType:   "ha",
-				SrcVPNGatewayStatus: "unknown",
-				SrcVPNTunnel:        "tunnel-a-2",
-				SrcVPNTunnelStatus:  "ESTABLISHED",
-				Mapped:              true,
-				DstProject:          "dst-a",
-				DstRegion:           "us-central1",
-				DstVPNGateway:       "ha-peer",
-				DstVPNGatewayType:   "ha",
-				DstVPNGatewayStatus: "unknown",
-				DstVPNTunnel:        "tunnel-peer-2",
-				DstVPNTunnelStatus:  "ESTABLISHED",
-				DstVPC:              "vpc-a",
-				DstCloudRouter:      "router-b",
-				DstCloudRouterASN:   "64513",
+				Org:                       "dbc",
+				Workload:                  "native",
+				Environment:               "dev",
+				SrcProject:                "src-a",
+				SrcRegion:                 "us-central1",
+				SrcVPNGateway:             "ha-a",
+				SrcVPNGatewayType:         "ha",
+				SrcCloudRouter:            "router-src-a",
+				SrcCloudRouterASN:         "64510",
+				SrcCloudRouterInterface:   "if-src-a-2",
+				SrcCloudRouterInterfaceIP: "169.254.10.5",
+				SrcVPNTunnel:              "tunnel-a-2",
+				SrcVPNTunnelStatus:        "ESTABLISHED",
+				Mapped:                    true,
+				DstProject:                "dst-a",
+				DstRegion:                 "us-central1",
+				DstVPNGateway:             "ha-peer",
+				DstVPNGatewayType:         "ha",
+				DstVPNTunnel:              "tunnel-peer-2",
+				DstVPNTunnelStatus:        "ESTABLISHED",
+				DstCloudRouter:            "router-b",
+				DstCloudRouterASN:         "64513",
+				DstCloudRouterInterface:   "if-dst-a-2",
+				DstCloudRouterInterfaceIP: "169.254.20.5",
+				BGPPeeringStatus:          "UP",
 			},
 			{
-				Org:                 "dbc",
-				Workload:            "native",
-				Environment:         "dev",
-				SrcProject:          "src-b",
-				SrcRegion:           "europe-west1",
-				SrcVPNGateway:       "ha-b",
-				SrcVPNGatewayType:   "ha",
-				SrcVPNGatewayStatus: "unknown",
-				SrcVPNTunnel:        "tunnel-b-1",
-				SrcVPNTunnelStatus:  "ESTABLISHED",
-				Mapped:              true,
-				DstProject:          "dst-b",
-				DstRegion:           "europe-west1",
-				DstVPNGateway:       "ha-peer-b",
-				DstVPNGatewayType:   "ha",
-				DstVPNGatewayStatus: "unknown",
-				DstVPNTunnel:        "tunnel-peer-b-1",
-				DstVPNTunnelStatus:  "ESTABLISHED",
-				DstVPC:              "vpc-b",
-				DstCloudRouter:      "router-c",
-				DstCloudRouterASN:   "64514",
+				Org:                       "dbc",
+				Workload:                  "native",
+				Environment:               "dev",
+				SrcProject:                "src-b",
+				SrcRegion:                 "europe-west1",
+				SrcVPNGateway:             "ha-b",
+				SrcVPNGatewayType:         "ha",
+				SrcCloudRouter:            "router-src-b",
+				SrcCloudRouterASN:         "64511",
+				SrcCloudRouterInterface:   "if-src-b-1",
+				SrcCloudRouterInterfaceIP: "169.254.30.1",
+				SrcVPNTunnel:              "tunnel-b-1",
+				SrcVPNTunnelStatus:        "ESTABLISHED",
+				Mapped:                    true,
+				DstProject:                "dst-b",
+				DstRegion:                 "europe-west1",
+				DstVPNGateway:             "ha-peer-b",
+				DstVPNGatewayType:         "ha",
+				DstVPNTunnel:              "tunnel-peer-b-1",
+				DstVPNTunnelStatus:        "ESTABLISHED",
+				DstCloudRouter:            "router-c",
+				DstCloudRouterASN:         "64514",
+				DstCloudRouterInterface:   "if-dst-b-1",
+				DstCloudRouterInterfaceIP: "169.254.40.1",
+				BGPPeeringStatus:          "DOWN",
 			},
 		},
 	}
@@ -176,11 +188,28 @@ func TestRenderCSV(t *testing.T) {
 	if strings.Contains(content, "dst_cloud_router_state") {
 		t.Fatalf("unexpected router state column in csv: %s", content)
 	}
-	if !strings.Contains(content, "org,workload,environment,src_project,src_interconnect,src_vpn_gateway,src_vpn_gateway_type,src_vpn_gateway_status,src_vpn_tunnel,src_vpn_tunnel_status,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vpc,dst_vlan_attachment") {
+	if !strings.Contains(content, "org,workload,environment,src_project,src_interconnect,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vpc,dst_vlan_attachment") {
 		t.Fatalf("unexpected csv header order: %s", content)
 	}
-	if !strings.Contains(content, "dst_vpn_gateway,dst_vpn_gateway_type,dst_vpn_gateway_status,dst_vpn_tunnel,dst_vpn_tunnel_status,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,remote_bgp_peer_asn,bgp_peering_status") {
+	if !strings.Contains(content, "dst_vlan_attachment_state,dst_vlan_attachment_vlanid,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,remote_bgp_peer_asn,bgp_peering_status") {
 		t.Fatalf("unexpected csv tail column order: %s", content)
+	}
+}
+
+func TestRenderVPNCSV(t *testing.T) {
+	data, ext, err := Render(sampleVPNReport(), FormatCSV)
+	if err != nil {
+		t.Fatalf("render vpn csv: %v", err)
+	}
+	if ext != "csv" {
+		t.Fatalf("expected csv extension, got %q", ext)
+	}
+	content := string(data)
+	if !strings.Contains(content, "org,workload,environment,src_project,src_region,src_vpn_gateway,src_vpn_gateway_type,src_cloud_router,src_cloud_router_asn,src_cloud_router_interface,src_cloud_router_interface_ip,src_vpn_tunnel,src_vpn_tunnel_status,mapped,bgp_peering_status,dst_vpn_tunnel,dst_vpn_tunnel_status,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,dst_vpn_gateway,dst_vpn_gateway_type,dst_region,dst_project") {
+		t.Fatalf("unexpected vpn csv header order: %s", content)
+	}
+	if strings.Contains(content, "remote_bgp_peer") || strings.Contains(content, "src_vpn_gateway_status") || strings.Contains(content, "dst_vpn_gateway_status") {
+		t.Fatalf("unexpected vpn-only removed fields in csv output: %s", content)
 	}
 }
 
@@ -219,6 +248,26 @@ func TestRenderJSON(t *testing.T) {
 	}
 }
 
+func TestRenderVPNJSON(t *testing.T) {
+	data, ext, err := Render(sampleVPNReport(), FormatJSON)
+	if err != nil {
+		t.Fatalf("render vpn json: %v", err)
+	}
+	if ext != "json" {
+		t.Fatalf("expected json extension, got %q", ext)
+	}
+	content := string(data)
+	if !strings.Contains(content, `"src_cloud_router": "router-src-a"`) || !strings.Contains(content, `"dst_cloud_router": "router-a"`) {
+		t.Fatalf("expected source and destination router nodes in vpn json output, got: %s", content)
+	}
+	if !strings.Contains(content, `"bgp_peering_statuses"`) || !strings.Contains(content, `"dst_vpn_tunnels"`) {
+		t.Fatalf("expected vpn hierarchy to include bgp status and destination tunnel nodes, got: %s", content)
+	}
+	if strings.Contains(content, `"remote_bgp_peer"`) || strings.Contains(content, `"src_vpn_gateway_status"`) || strings.Contains(content, `"dst_vpn_gateway_status"`) {
+		t.Fatalf("unexpected removed vpn fields in json output: %s", content)
+	}
+}
+
 func TestRenderTree(t *testing.T) {
 	data, ext, err := Render(sampleReport(), FormatTree)
 	if err != nil {
@@ -248,6 +297,26 @@ func TestRenderTree(t *testing.T) {
 	}
 	if !strings.Contains(content, "dst_vlan_attachment: attachment-1 [dst_vpc: vpc-a, dst_vlan_attachment_state: ACTIVE, dst_vlan_attachment_vlanid: 101]") || !strings.Contains(content, "dst_project: dst-b [mapped: false]") {
 		t.Fatalf("unexpected tree output: %s", content)
+	}
+}
+
+func TestRenderVPNTree(t *testing.T) {
+	data, ext, err := Render(sampleVPNReport(), FormatTree)
+	if err != nil {
+		t.Fatalf("render vpn tree: %v", err)
+	}
+	if ext != "tree.txt" {
+		t.Fatalf("expected tree extension, got %q", ext)
+	}
+	content := string(data)
+	if !strings.Contains(content, "src_cloud_router: router-src-a [src_cloud_router_asn: 64510, src_cloud_router_interface: if-src-a-1, src_cloud_router_interface_ip: 169.254.10.1]") {
+		t.Fatalf("expected source router node in vpn tree output, got: %s", content)
+	}
+	if !strings.Contains(content, "bgp_peering_status: UP") || !strings.Contains(content, "dst_cloud_router: router-a [dst_cloud_router_asn: 64512, dst_cloud_router_interface: if-dst-a-1, dst_cloud_router_interface_ip: 169.254.20.1]") {
+		t.Fatalf("expected status and destination router nodes in vpn tree output, got: %s", content)
+	}
+	if strings.Contains(content, "remote_bgp_peer") || strings.Contains(content, "src_vpn_gateway_status") || strings.Contains(content, "dst_vpn_gateway_status") {
+		t.Fatalf("unexpected removed vpn fields in tree output: %s", content)
 	}
 }
 
@@ -517,6 +586,9 @@ func TestRenderVPNMermaidCollapsesProjectRegionPairsIntoSeparateNodes(t *testing
 	if !strings.Contains(content, "src_vpn_gateway: ha-a") || !strings.Contains(content, "dst_vpn_gateway: ha-peer") {
 		t.Fatalf("expected vpn gateway labels, got %s", content)
 	}
+	if !strings.Contains(content, "src_cloud_router: router-src-a") || !strings.Contains(content, "dst_cloud_router: router-a") {
+		t.Fatalf("expected dedicated vpn router nodes, got %s", content)
+	}
 	if countSubstring(content, "src_project: src-a") != 1 {
 		t.Fatalf("expected one shared src-a project node, got %d in %s", countSubstring(content, "src_project: src-a"), content)
 	}
@@ -528,6 +600,12 @@ func TestRenderVPNMermaidCollapsesProjectRegionPairsIntoSeparateNodes(t *testing
 	}
 	if countSubstring(content, "dst_region: us-central1") != 1 {
 		t.Fatalf("expected one shared dst region node for dst-a/us-central1, got %d in %s", countSubstring(content, "dst_region: us-central1"), content)
+	}
+	if !strings.Contains(content, "bgp_peering_status: UP") {
+		t.Fatalf("expected dedicated bgp status node in vpn mermaid output, got %s", content)
+	}
+	if strings.Contains(content, "remote_bgp_peer") {
+		t.Fatalf("unexpected remote peer fields in vpn mermaid output: %s", content)
 	}
 	if strings.Contains(content, "src_interconnect:") {
 		t.Fatalf("unexpected interconnect nodes in vpn mermaid output: %s", content)
@@ -542,44 +620,58 @@ func TestRenderVPNMermaidKeepsSameRegionLabelsSeparateAcrossDifferentProjects(t 
 		},
 		Items: []model.MappingItem{
 			{
-				Org:                 "dbc",
-				Workload:            "native",
-				Environment:         "dev",
-				SrcProject:          "src-a",
-				SrcRegion:           "us-central1",
-				SrcVPNGateway:       "ha-a",
-				SrcVPNGatewayType:   "ha",
-				SrcVPNGatewayStatus: "unknown",
-				SrcVPNTunnel:        "tunnel-a",
-				SrcVPNTunnelStatus:  "ESTABLISHED",
-				Mapped:              true,
-				DstProject:          "dst-a",
-				DstRegion:           "us-central1",
-				DstVPNGateway:       "dst-ha-a",
-				DstVPNGatewayType:   "ha",
-				DstVPNGatewayStatus: "unknown",
-				DstVPNTunnel:        "dst-tunnel-a",
-				DstVPNTunnelStatus:  "ESTABLISHED",
+				Org:                       "dbc",
+				Workload:                  "native",
+				Environment:               "dev",
+				SrcProject:                "src-a",
+				SrcRegion:                 "us-central1",
+				SrcVPNGateway:             "ha-a",
+				SrcVPNGatewayType:         "ha",
+				SrcCloudRouter:            "router-src-a",
+				SrcCloudRouterASN:         "64510",
+				SrcCloudRouterInterface:   "if-src-a",
+				SrcCloudRouterInterfaceIP: "169.254.1.1",
+				SrcVPNTunnel:              "tunnel-a",
+				SrcVPNTunnelStatus:        "ESTABLISHED",
+				Mapped:                    true,
+				DstProject:                "dst-a",
+				DstRegion:                 "us-central1",
+				DstVPNGateway:             "dst-ha-a",
+				DstVPNGatewayType:         "ha",
+				DstVPNTunnel:              "dst-tunnel-a",
+				DstVPNTunnelStatus:        "ESTABLISHED",
+				DstCloudRouter:            "router-dst-a",
+				DstCloudRouterASN:         "64520",
+				DstCloudRouterInterface:   "if-dst-a",
+				DstCloudRouterInterfaceIP: "169.254.1.2",
+				BGPPeeringStatus:          "UP",
 			},
 			{
-				Org:                 "dbc",
-				Workload:            "platform",
-				Environment:         "dev",
-				SrcProject:          "src-b",
-				SrcRegion:           "us-central1",
-				SrcVPNGateway:       "ha-b",
-				SrcVPNGatewayType:   "ha",
-				SrcVPNGatewayStatus: "unknown",
-				SrcVPNTunnel:        "tunnel-b",
-				SrcVPNTunnelStatus:  "ESTABLISHED",
-				Mapped:              true,
-				DstProject:          "dst-b",
-				DstRegion:           "us-central1",
-				DstVPNGateway:       "dst-ha-b",
-				DstVPNGatewayType:   "ha",
-				DstVPNGatewayStatus: "unknown",
-				DstVPNTunnel:        "dst-tunnel-b",
-				DstVPNTunnelStatus:  "ESTABLISHED",
+				Org:                       "dbc",
+				Workload:                  "platform",
+				Environment:               "dev",
+				SrcProject:                "src-b",
+				SrcRegion:                 "us-central1",
+				SrcVPNGateway:             "ha-b",
+				SrcVPNGatewayType:         "ha",
+				SrcCloudRouter:            "router-src-b",
+				SrcCloudRouterASN:         "64511",
+				SrcCloudRouterInterface:   "if-src-b",
+				SrcCloudRouterInterfaceIP: "169.254.2.1",
+				SrcVPNTunnel:              "tunnel-b",
+				SrcVPNTunnelStatus:        "ESTABLISHED",
+				Mapped:                    true,
+				DstProject:                "dst-b",
+				DstRegion:                 "us-central1",
+				DstVPNGateway:             "dst-ha-b",
+				DstVPNGatewayType:         "ha",
+				DstVPNTunnel:              "dst-tunnel-b",
+				DstVPNTunnelStatus:        "ESTABLISHED",
+				DstCloudRouter:            "router-dst-b",
+				DstCloudRouterASN:         "64521",
+				DstCloudRouterInterface:   "if-dst-b",
+				DstCloudRouterInterfaceIP: "169.254.2.2",
+				BGPPeeringStatus:          "UP",
 			},
 		},
 	}
