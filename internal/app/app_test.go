@@ -202,11 +202,17 @@ func TestParseOptionsHelp(t *testing.T) {
 	if !strings.Contains(opts.Usage, "Org fanout output:   netmap-interconnect-<src>-to-<org>-all-<timestamp>.<ext>") {
 		t.Fatalf("expected org fanout output guidance, got %+v", opts)
 	}
-	if !strings.Contains(opts.Usage, "VPN output file:     netmap-vpn-<src>-to-<dst>-<timestamp>.<ext>") {
-		t.Fatalf("expected vpn output guidance, got %+v", opts)
+	if !strings.Contains(opts.Usage, "VPN exact output:    netmap-vpn-<org>-<workload>-<env>-<timestamp>.<ext>") {
+		t.Fatalf("expected vpn exact output guidance, got %+v", opts)
 	}
-	if !strings.Contains(opts.Usage, "VPN aggregate file:  netmap-vpn-<org>-all-<timestamp>.<ext>") {
-		t.Fatalf("expected vpn aggregate output guidance, got %+v", opts)
+	if !strings.Contains(opts.Usage, "VPN org output:      netmap-vpn-<org>-all-<timestamp>.<ext>") {
+		t.Fatalf("expected vpn org output guidance, got %+v", opts)
+	}
+	if !strings.Contains(opts.Usage, "VPN workload output: netmap-vpn-<org>-<workload>-all-<timestamp>.<ext>") {
+		t.Fatalf("expected vpn workload output guidance, got %+v", opts)
+	}
+	if !strings.Contains(opts.Usage, "VPN env output:      netmap-vpn-<org>-all-<env>-<timestamp>.<ext>") {
+		t.Fatalf("expected vpn env output guidance, got %+v", opts)
 	}
 	if !strings.Contains(opts.Usage, "Use -f html to write a self-contained offline Mermaid viewer page.") {
 		t.Fatalf("expected blank line before html viewer note, got %+v", opts)
@@ -727,7 +733,7 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 		t.Fatalf("run app: %v", err)
 	}
 
-	data, ok := store.files["netmap-vpn-project-to-peer-project-20260328T000000Z.mmd"]
+	data, ok := store.files["netmap-vpn-dbc-native-dev-20260328T000000Z.mmd"]
 	if !ok {
 		t.Fatalf("expected vpn mermaid output file to be written, got files: %#v", store.files)
 	}
@@ -747,12 +753,220 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 	if strings.Contains(content, "remote_bgp_peer:") {
 		t.Fatalf("unexpected remote peer fields in vpn mermaid output, got: %s", content)
 	}
+	if strings.Contains(content, "mapped:") {
+		t.Fatalf("unexpected mapped field in vpn mermaid output, got: %s", content)
+	}
 	if strings.Contains(content, "src_interconnect:") {
 		t.Fatalf("unexpected interconnect node in vpn mermaid output: %s", content)
 	}
 	statusOutput := status.String()
-	if !strings.Contains(statusOutput, "Output: netmap-vpn-project-to-peer-project-20260328T000000Z.mmd") || !strings.Contains(statusOutput, "Total Time: 0s") {
+	if !strings.Contains(statusOutput, "Output: netmap-vpn-dbc-native-dev-20260328T000000Z.mmd") || !strings.Contains(statusOutput, "Total Time: 0s") {
 		t.Fatalf("expected vpn final summary row, got: %s", statusOutput)
+	}
+}
+
+func TestBuildVPNProjectItemsMatchesDestinationInterfaceByPeerEvidence(t *testing.T) {
+	store := &memoryFileStore{files: map[string][]byte{}}
+	app, err := New(store, mockProvider{
+		vpnGatewaysByProject: map[string][]model.VPNGateway{
+			"project": {{
+				Name:     "ha-src",
+				Region:   "us-central1",
+				Network:  "src-vpc",
+				Type:     "ha",
+				SelfLink: "https://www.googleapis.com/compute/v1/projects/project/regions/us-central1/vpnGateways/ha-src",
+			}},
+			"peer-project": {{
+				Name:     "ha-dst",
+				Region:   "us-central1",
+				Network:  "dst-vpc",
+				Type:     "ha",
+				SelfLink: "https://www.googleapis.com/compute/v1/projects/peer-project/regions/us-central1/vpnGateways/ha-dst",
+			}},
+		},
+		vpnTunnelsByProject: map[string][]model.VPNTunnel{
+			"project": {{
+				Name:                "tunnel-src",
+				Region:              "us-central1",
+				Status:              "ESTABLISHED",
+				VPNGateway:          "ha-src",
+				PeerGCPGateway:      "https://www.googleapis.com/compute/v1/projects/peer-project/regions/us-central1/vpnGateways/ha-dst",
+				Router:              "router-src",
+				VPNGatewayInterface: "0",
+			}},
+			"peer-project": {
+				{
+					Name:                "tunnel-dst-match",
+					Region:              "us-central1",
+					Status:              "ESTABLISHED",
+					VPNGateway:          "ha-dst",
+					PeerGCPGateway:      "https://www.googleapis.com/compute/v1/projects/project/regions/us-central1/vpnGateways/ha-src",
+					Router:              "router-dst-match",
+					VPNGatewayInterface: "0",
+				},
+				{
+					Name:                "tunnel-dst-other",
+					Region:              "us-central1",
+					Status:              "ESTABLISHED",
+					VPNGateway:          "ha-dst",
+					PeerGCPGateway:      "https://www.googleapis.com/compute/v1/projects/project/regions/us-central1/vpnGateways/ha-src",
+					Router:              "router-dst-other",
+					VPNGatewayInterface: "1",
+				},
+			},
+		},
+		routersByProject: map[string][]model.CloudRouter{
+			"project": {{
+				Name:    "router-src",
+				Region:  "us-central1",
+				ASN:     "64510",
+				Network: "src-vpc",
+				Interfaces: []model.RouterInterface{{
+					Name:            "if-src",
+					LinkedVPNTunnel: "tunnel-src",
+					IPRange:         "169.254.10.1/30",
+				}},
+				BGPPeers: []model.BGPPeer{{
+					Name:         "peer-src",
+					Interface:    "if-src",
+					LocalIP:      "169.254.10.1",
+					RemoteIP:     "169.254.20.2",
+					PeerASN:      "64520",
+					SessionState: "UP",
+				}},
+			}},
+			"peer-project": {
+				{
+					Name:    "router-dst-match",
+					Region:  "us-central1",
+					ASN:     "64520",
+					Network: "dst-vpc",
+					Interfaces: []model.RouterInterface{{
+						Name:            "if-dst-match",
+						LinkedVPNTunnel: "tunnel-dst-match",
+						IPRange:         "169.254.20.2/30",
+					}},
+					BGPPeers: []model.BGPPeer{{
+						Name:         "peer-dst-match",
+						Interface:    "if-dst-match",
+						LocalIP:      "169.254.20.2",
+						RemoteIP:     "169.254.10.1",
+						PeerASN:      "64510",
+						SessionState: "UP",
+					}},
+				},
+				{
+					Name:    "router-dst-other",
+					Region:  "us-central1",
+					ASN:     "64521",
+					Network: "dst-vpc",
+					Interfaces: []model.RouterInterface{{
+						Name:            "if-dst-other",
+						LinkedVPNTunnel: "tunnel-dst-other",
+						IPRange:         "169.254.30.2/30",
+					}},
+					BGPPeers: []model.BGPPeer{{
+						Name:         "peer-dst-other",
+						Interface:    "if-dst-other",
+						LocalIP:      "169.254.30.2",
+						RemoteIP:     "169.254.30.1",
+						PeerASN:      "64510",
+						SessionState: "DOWN",
+					}},
+				},
+			},
+		},
+		statusesByProjectRoute: map[string]model.RouterStatus{
+			"project/us-central1/router-src": {
+				RouterName: "router-src",
+				Region:     "us-central1",
+				Peers: []model.BGPPeerStatus{{
+					Name:         "peer-src",
+					LocalIP:      "169.254.10.1",
+					RemoteIP:     "169.254.20.2",
+					SessionState: "UP",
+				}},
+			},
+			"peer-project/us-central1/router-dst-match": {
+				RouterName: "router-dst-match",
+				Region:     "us-central1",
+				Peers: []model.BGPPeerStatus{{
+					Name:         "peer-dst-match",
+					LocalIP:      "169.254.20.2",
+					RemoteIP:     "169.254.10.1",
+					SessionState: "UP",
+				}},
+			},
+			"peer-project/us-central1/router-dst-other": {
+				RouterName: "router-dst-other",
+				Region:     "us-central1",
+				Peers: []model.BGPPeerStatus{{
+					Name:         "peer-dst-other",
+					LocalIP:      "169.254.30.2",
+					RemoteIP:     "169.254.30.1",
+					SessionState: "DOWN",
+				}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new app: %v", err)
+	}
+
+	items, err := app.buildVPNProjectItems(context.Background(), "project", map[string]vpnProjectData{})
+	if err != nil {
+		t.Fatalf("build vpn project items: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected one vpn item, got %d", len(items))
+	}
+
+	item := items[0]
+	if item.DstVPNTunnel != "tunnel-dst-match" || item.DstCloudRouter != "router-dst-match" {
+		t.Fatalf("expected peer evidence to select the matching destination tunnel and router, got %+v", item)
+	}
+	if item.DstCloudRouterInterface != "if-dst-match" || item.DstCloudRouterInterfaceIP != "169.254.20.2" {
+		t.Fatalf("expected peer evidence to select the matching destination interface, got %+v", item)
+	}
+	if item.BGPPeeringStatus != "UP" {
+		t.Fatalf("expected matched peer session state to propagate, got %+v", item)
+	}
+}
+
+func TestDefaultOutputPathUsesVPNSelectorNaming(t *testing.T) {
+	timestamp := "20260328T000000Z"
+	report := model.Report{Type: TypeVPN}
+	tests := []struct {
+		name string
+		opts Options
+		want string
+	}{
+		{
+			name: "org only",
+			opts: Options{Type: TypeVPN, Org: "dbc"},
+			want: "netmap-vpn-dbc-all-20260328T000000Z.mmd",
+		},
+		{
+			name: "workload only",
+			opts: Options{Type: TypeVPN, Org: "dbc", Workload: "native"},
+			want: "netmap-vpn-dbc-native-all-20260328T000000Z.mmd",
+		},
+		{
+			name: "environment only",
+			opts: Options{Type: TypeVPN, Org: "dbc", Environment: "dev"},
+			want: "netmap-vpn-dbc-all-dev-20260328T000000Z.mmd",
+		},
+		{
+			name: "exact tuple",
+			opts: Options{Type: TypeVPN, Org: "dbc", Workload: "native", Environment: "dev"},
+			want: "netmap-vpn-dbc-native-dev-20260328T000000Z.mmd",
+		},
+	}
+
+	for _, tc := range tests {
+		if got := defaultOutputPath("", tc.opts, report, "mmd", timestamp); got != tc.want {
+			t.Fatalf("%s: expected %q, got %q", tc.name, tc.want, got)
+		}
 	}
 }
 

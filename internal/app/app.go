@@ -250,6 +250,28 @@ type vpnProjectData struct {
 	RouterByKey   map[string]model.CloudRouter
 }
 
+type vpnSourceInterfaceCandidate struct {
+	RouterName    string
+	RouterASN     string
+	InterfaceName string
+	InterfaceIP   string
+	Peers         []model.BGPPeer
+}
+
+type vpnDestinationInterfaceCandidate struct {
+	Region        string
+	VPC           string
+	GatewayName   string
+	GatewayType   string
+	TunnelName    string
+	TunnelStatus  string
+	RouterName    string
+	RouterASN     string
+	InterfaceName string
+	InterfaceIP   string
+	Peers         []model.BGPPeer
+}
+
 func (a *App) buildInterconnectReport(ctx context.Context, opts Options, targets []config.ResolvedTarget) (model.Report, error) {
 	interconnects, err := a.provider.ListDedicatedInterconnects(ctx, opts.SourceProject)
 	if err != nil {
@@ -414,16 +436,16 @@ func (a *App) buildVPNProjectItems(ctx context.Context, sourceProject string, de
 
 		for _, tunnel := range tunnels {
 			base := vpnBaseItem(sourceProject, gateway, tunnel)
-			populateVPNSourceRouterFields(&base, sourceData, tunnel)
+			sourceCandidates := vpnSourceInterfaceCandidates(sourceData, tunnel)
 
 			if strings.TrimSpace(tunnel.PeerGCPGateway) == "" {
-				items = append(items, base)
+				items = append(items, vpnItemsForSourceCandidates(base, sourceCandidates)...)
 				continue
 			}
 
 			dstProject := projectIDFromResourceURL(tunnel.PeerGCPGateway)
 			if strings.TrimSpace(dstProject) == "" {
-				items = append(items, base)
+				items = append(items, vpnItemsForSourceCandidates(base, sourceCandidates)...)
 				continue
 			}
 			base.Mapped = true
@@ -449,49 +471,38 @@ func (a *App) buildVPNProjectItems(ctx context.Context, sourceProject string, de
 				base.DstVPC = firstNonEmpty(base.DstVPC, destGateway.Network)
 			}
 
-			destTunnel, foundDestTunnel := matchDestinationVPNTunnel(tunnel, gateway, destGateway, destData.Tunnels)
-			if !foundDestTunnel {
-				base.BGPPeeringStatus = "unknown"
-				items = append(items, base)
+			destCandidates := vpnDestinationInterfaceCandidates(tunnel, gateway, destGateway, destData)
+			if len(destCandidates) == 0 {
+				sourceItems := vpnItemsForSourceCandidates(base, sourceCandidates)
+				for idx := range sourceItems {
+					sourceItems[idx].BGPPeeringStatus = "unknown"
+				}
+				items = append(items, sourceItems...)
 				continue
 			}
 
-			base.DstRegion = firstNonEmpty(destTunnel.Region, base.DstRegion)
-			base.DstVPNTunnel = destTunnel.Name
-			base.DstVPNTunnelStatus = destTunnel.Status
+			sharedDestination, hasSharedDestination := sharedVPNDestinationContext(destCandidates)
+			availableDestinations := append([]vpnDestinationInterfaceCandidate(nil), destCandidates...)
+			for _, sourceCandidate := range sourceCandidates {
+				item := base
+				applyVPNSourceCandidate(&item, sourceCandidate)
 
-			destRouter := destData.RouterByKey[routerKey(destTunnel.Region, destTunnel.Router)]
-			base.DstVPC = firstNonEmpty(destRouter.Network, base.DstVPC)
-			base.DstCloudRouter = firstNonEmpty(destRouter.Name, destTunnel.Router)
-			base.DstCloudRouterASN = destRouter.ASN
-
-			destInterfaces := interfacesForTunnel(destRouter, destTunnel.Name)
-			if len(destInterfaces) == 0 {
-				items = append(items, base)
-				continue
-			}
-
-			destPeersByInterface := peersForRouter(destRouter, destData.Statuses[routerKey(destRouter.Region, destRouter.Name)])
-			for _, iface := range destInterfaces {
-				peers := destPeersByInterface[iface.Name]
-				if len(peers) == 0 {
-					item := base
-					item.DstCloudRouterInterface = iface.Name
-					item.DstCloudRouterInterfaceIP = iface.IPRange
-					item.BGPPeeringStatus = "unknown"
+				if matchIndex, matched := chooseVPNDestinationCandidate(sourceCandidate, availableDestinations); matched {
+					destinationCandidate := availableDestinations[matchIndex]
+					applyVPNDestinationCandidate(&item, destinationCandidate)
+					item.BGPPeeringStatus = vpnPairStatus(sourceCandidate, destinationCandidate)
+					availableDestinations = append(availableDestinations[:matchIndex], availableDestinations[matchIndex+1:]...)
 					items = append(items, item)
 					continue
 				}
-				for _, peer := range peers {
-					item := base
-					item.DstCloudRouterInterface = iface.Name
-					item.DstCloudRouterInterfaceIP = firstNonEmpty(peer.LocalIP, iface.IPRange)
-					item.RemoteBGPPeer = peer.Name
-					item.RemoteBGPPeerIP = peer.RemoteIP
-					item.RemoteBGPPeerASN = peer.PeerASN
-					item.BGPPeeringStatus = firstNonEmpty(peer.SessionState, "unknown")
-					items = append(items, item)
+
+				if hasSharedDestination {
+					applyVPNDestinationCandidate(&item, sharedDestination)
+					item.DstCloudRouterInterface = ""
+					item.DstCloudRouterInterfaceIP = ""
 				}
+				item.BGPPeeringStatus = "unknown"
+				items = append(items, item)
 			}
 		}
 	}
@@ -705,24 +716,323 @@ func vpnBaseItem(srcProject string, gateway model.VPNGateway, tunnel model.VPNTu
 	return item
 }
 
-func populateVPNSourceRouterFields(item *model.MappingItem, sourceData vpnProjectData, tunnel model.VPNTunnel) {
+func vpnSourceInterfaceCandidates(sourceData vpnProjectData, tunnel model.VPNTunnel) []vpnSourceInterfaceCandidate {
 	router := sourceData.RouterByKey[routerKey(tunnel.Region, tunnel.Router)]
-	item.SrcCloudRouter = firstNonEmpty(router.Name, tunnel.Router)
-	item.SrcCloudRouterASN = router.ASN
-
+	base := vpnSourceInterfaceCandidate{
+		RouterName: firstNonEmpty(router.Name, tunnel.Router),
+		RouterASN:  router.ASN,
+	}
 	interfaces := interfacesForTunnel(router, tunnel.Name)
 	if len(interfaces) == 0 {
-		return
+		return []vpnSourceInterfaceCandidate{base}
 	}
-
-	item.SrcCloudRouterInterface = interfaces[0].Name
-	item.SrcCloudRouterInterfaceIP = interfaces[0].IPRange
 
 	peersByInterface := peersForRouter(router, sourceData.Statuses[routerKey(router.Region, router.Name)])
-	peers := peersByInterface[interfaces[0].Name]
-	if len(peers) > 0 {
-		item.SrcCloudRouterInterfaceIP = firstNonEmpty(peers[0].LocalIP, interfaces[0].IPRange)
+	sort.Slice(interfaces, func(i, j int) bool {
+		return interfaces[i].Name < interfaces[j].Name
+	})
+
+	candidates := make([]vpnSourceInterfaceCandidate, 0, len(interfaces))
+	for _, iface := range interfaces {
+		peers := append([]model.BGPPeer(nil), peersByInterface[iface.Name]...)
+		candidates = append(candidates, vpnSourceInterfaceCandidate{
+			RouterName:    base.RouterName,
+			RouterASN:     base.RouterASN,
+			InterfaceName: iface.Name,
+			InterfaceIP:   preferredInterfaceIP(iface, peers),
+			Peers:         peers,
+		})
 	}
+	return candidates
+}
+
+func vpnItemsForSourceCandidates(base model.MappingItem, candidates []vpnSourceInterfaceCandidate) []model.MappingItem {
+	items := make([]model.MappingItem, 0, len(candidates))
+	for _, candidate := range candidates {
+		item := base
+		applyVPNSourceCandidate(&item, candidate)
+		items = append(items, item)
+	}
+	return items
+}
+
+func applyVPNSourceCandidate(item *model.MappingItem, candidate vpnSourceInterfaceCandidate) {
+	item.SrcCloudRouter = candidate.RouterName
+	item.SrcCloudRouterASN = candidate.RouterASN
+	item.SrcCloudRouterInterface = candidate.InterfaceName
+	item.SrcCloudRouterInterfaceIP = candidate.InterfaceIP
+}
+
+func applyVPNDestinationCandidate(item *model.MappingItem, candidate vpnDestinationInterfaceCandidate) {
+	item.DstRegion = firstNonEmpty(candidate.Region, item.DstRegion)
+	item.DstVPC = firstNonEmpty(candidate.VPC, item.DstVPC)
+	item.DstVPNGateway = firstNonEmpty(candidate.GatewayName, item.DstVPNGateway)
+	item.DstVPNGatewayType = firstNonEmpty(candidate.GatewayType, item.DstVPNGatewayType)
+	item.DstVPNTunnel = candidate.TunnelName
+	item.DstVPNTunnelStatus = candidate.TunnelStatus
+	item.DstCloudRouter = candidate.RouterName
+	item.DstCloudRouterASN = candidate.RouterASN
+	item.DstCloudRouterInterface = candidate.InterfaceName
+	item.DstCloudRouterInterfaceIP = candidate.InterfaceIP
+}
+
+func vpnDestinationInterfaceCandidates(sourceTunnel model.VPNTunnel, sourceGateway, destinationGateway model.VPNGateway, destinationData vpnProjectData) []vpnDestinationInterfaceCandidate {
+	tunnels := matchingDestinationVPNTunnels(sourceTunnel, sourceGateway, destinationGateway, destinationData.Tunnels)
+	if len(tunnels) == 0 {
+		return nil
+	}
+
+	var candidates []vpnDestinationInterfaceCandidate
+	for _, tunnel := range tunnels {
+		router := destinationData.RouterByKey[routerKey(tunnel.Region, tunnel.Router)]
+		base := vpnDestinationInterfaceCandidate{
+			Region:       firstNonEmpty(tunnel.Region, destinationGateway.Region),
+			VPC:          firstNonEmpty(router.Network, destinationGateway.Network),
+			GatewayName:  firstNonEmpty(destinationGateway.Name, tunnel.VPNGateway),
+			GatewayType:  firstNonEmpty(destinationGateway.Type),
+			TunnelName:   tunnel.Name,
+			TunnelStatus: tunnel.Status,
+			RouterName:   firstNonEmpty(router.Name, tunnel.Router),
+			RouterASN:    router.ASN,
+		}
+
+		interfaces := interfacesForTunnel(router, tunnel.Name)
+		if len(interfaces) == 0 {
+			candidates = append(candidates, base)
+			continue
+		}
+
+		sort.Slice(interfaces, func(i, j int) bool {
+			return interfaces[i].Name < interfaces[j].Name
+		})
+		peersByInterface := peersForRouter(router, destinationData.Statuses[routerKey(router.Region, router.Name)])
+		for _, iface := range interfaces {
+			peers := append([]model.BGPPeer(nil), peersByInterface[iface.Name]...)
+			candidates = append(candidates, vpnDestinationInterfaceCandidate{
+				Region:        base.Region,
+				VPC:           base.VPC,
+				GatewayName:   base.GatewayName,
+				GatewayType:   base.GatewayType,
+				TunnelName:    base.TunnelName,
+				TunnelStatus:  base.TunnelStatus,
+				RouterName:    base.RouterName,
+				RouterASN:     base.RouterASN,
+				InterfaceName: iface.Name,
+				InterfaceIP:   preferredInterfaceIP(iface, peers),
+				Peers:         peers,
+			})
+		}
+	}
+	return candidates
+}
+
+func matchingDestinationVPNTunnels(sourceTunnel model.VPNTunnel, sourceGateway, destinationGateway model.VPNGateway, destinationTunnels []model.VPNTunnel) []model.VPNTunnel {
+	var candidates []model.VPNTunnel
+	for _, tunnel := range destinationTunnels {
+		if strings.TrimSpace(destinationGateway.Name) != "" && strings.TrimSpace(tunnel.VPNGateway) != "" && tunnel.VPNGateway != destinationGateway.Name {
+			continue
+		}
+		if strings.TrimSpace(sourceGateway.SelfLink) != "" && strings.TrimSpace(tunnel.PeerGCPGateway) != "" && strings.TrimSpace(tunnel.PeerGCPGateway) != strings.TrimSpace(sourceGateway.SelfLink) {
+			continue
+		}
+		if strings.TrimSpace(sourceTunnel.Region) != "" && strings.TrimSpace(destinationGateway.Region) != "" && strings.TrimSpace(tunnel.Region) != "" && tunnel.Region != destinationGateway.Region {
+			continue
+		}
+		candidates = append(candidates, tunnel)
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].Region != candidates[j].Region {
+			return candidates[i].Region < candidates[j].Region
+		}
+		if candidates[i].Name != candidates[j].Name {
+			return candidates[i].Name < candidates[j].Name
+		}
+		return candidates[i].VPNGatewayInterface < candidates[j].VPNGatewayInterface
+	})
+	return candidates
+}
+
+func chooseVPNDestinationCandidate(source vpnSourceInterfaceCandidate, destinations []vpnDestinationInterfaceCandidate) (int, bool) {
+	if len(destinations) == 0 {
+		return -1, false
+	}
+
+	bestIndex := -1
+	bestScore := -1
+	tied := false
+	for idx, destination := range destinations {
+		score := vpnPairScore(source, destination)
+		if score > bestScore {
+			bestIndex = idx
+			bestScore = score
+			tied = false
+			continue
+		}
+		if score == bestScore {
+			tied = true
+		}
+	}
+
+	switch {
+	case bestScore >= 4 && !tied:
+		return bestIndex, true
+	case bestScore >= 2 && !tied:
+		return bestIndex, true
+	case bestScore == 0 && len(destinations) == 1:
+		return 0, true
+	default:
+		return -1, false
+	}
+}
+
+func vpnPairScore(source vpnSourceInterfaceCandidate, destination vpnDestinationInterfaceCandidate) int {
+	score := 0
+	if anySharedString(vpnRemoteIPs(source.Peers), vpnLocalIPs(destination.InterfaceIP, destination.Peers)) {
+		score += 4
+	}
+	if anySharedString(vpnRemoteIPs(destination.Peers), vpnLocalIPs(source.InterfaceIP, source.Peers)) {
+		score += 4
+	}
+	if containsString(vpnPeerASNs(source.Peers), destination.RouterASN) {
+		score += 2
+	}
+	if containsString(vpnPeerASNs(destination.Peers), source.RouterASN) {
+		score += 2
+	}
+	return score
+}
+
+func vpnPairStatus(source vpnSourceInterfaceCandidate, destination vpnDestinationInterfaceCandidate) string {
+	return firstNonEmpty(firstPeerSessionState(destination.Peers), firstPeerSessionState(source.Peers), "unknown")
+}
+
+func sharedVPNDestinationContext(candidates []vpnDestinationInterfaceCandidate) (vpnDestinationInterfaceCandidate, bool) {
+	if len(candidates) == 0 {
+		return vpnDestinationInterfaceCandidate{}, false
+	}
+	shared := candidates[0]
+	shared.InterfaceName = ""
+	shared.InterfaceIP = ""
+	for _, candidate := range candidates[1:] {
+		if candidate.Region != shared.Region ||
+			candidate.VPC != shared.VPC ||
+			candidate.GatewayName != shared.GatewayName ||
+			candidate.GatewayType != shared.GatewayType ||
+			candidate.TunnelName != shared.TunnelName ||
+			candidate.TunnelStatus != shared.TunnelStatus ||
+			candidate.RouterName != shared.RouterName ||
+			candidate.RouterASN != shared.RouterASN {
+			return vpnDestinationInterfaceCandidate{}, false
+		}
+	}
+	return shared, true
+}
+
+func preferredInterfaceIP(iface model.RouterInterface, peers []model.BGPPeer) string {
+	for _, peer := range peers {
+		if strings.TrimSpace(peer.LocalIP) != "" {
+			return strings.TrimSpace(peer.LocalIP)
+		}
+	}
+	return iface.IPRange
+}
+
+func vpnLocalIPs(interfaceIP string, peers []model.BGPPeer) []string {
+	values := make([]string, 0, len(peers)+1)
+	if normalized := normalizeIPAddress(interfaceIP); normalized != "" {
+		values = append(values, normalized)
+	}
+	for _, peer := range peers {
+		if normalized := normalizeIPAddress(peer.LocalIP); normalized != "" {
+			values = append(values, normalized)
+		}
+	}
+	return uniqueStrings(values)
+}
+
+func vpnRemoteIPs(peers []model.BGPPeer) []string {
+	values := make([]string, 0, len(peers))
+	for _, peer := range peers {
+		if normalized := normalizeIPAddress(peer.RemoteIP); normalized != "" {
+			values = append(values, normalized)
+		}
+	}
+	return uniqueStrings(values)
+}
+
+func vpnPeerASNs(peers []model.BGPPeer) []string {
+	values := make([]string, 0, len(peers))
+	for _, peer := range peers {
+		if trimmed := strings.TrimSpace(peer.PeerASN); trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	return uniqueStrings(values)
+}
+
+func firstPeerSessionState(peers []model.BGPPeer) string {
+	for _, peer := range peers {
+		if strings.TrimSpace(peer.SessionState) != "" {
+			return strings.TrimSpace(peer.SessionState)
+		}
+	}
+	return ""
+}
+
+func normalizeIPAddress(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if slash := strings.IndexRune(value, '/'); slash >= 0 {
+		return strings.TrimSpace(value[:slash])
+	}
+	return value
+}
+
+func anySharedString(left, right []string) bool {
+	if len(left) == 0 || len(right) == 0 {
+		return false
+	}
+	seen := make(map[string]struct{}, len(left))
+	for _, value := range left {
+		seen[value] = struct{}{}
+	}
+	for _, value := range right {
+		if _, ok := seen[value]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(values []string, target string) bool {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return false
+	}
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func uniqueStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func itemsForTarget(target config.ResolvedTarget, base []model.MappingItem) []model.MappingItem {
@@ -783,11 +1093,7 @@ func defaultOutputPath(format string, opts Options, report model.Report, ext, ti
 	var base string
 	switch report.Type {
 	case TypeVPN:
-		if strings.TrimSpace(report.SourceProject) != "" && strings.TrimSpace(report.DestinationProject) != "" {
-			base = fmt.Sprintf("netmap-vpn-%s-to-%s-%s", report.SourceProject, report.DestinationProject, timestamp)
-		} else {
-			base = fmt.Sprintf("netmap-vpn-%s-all-%s", opts.Org, timestamp)
-		}
+		base = vpnOutputBaseName(opts, timestamp)
 	default:
 		target := report.DestinationProject
 		if strings.TrimSpace(target) == "" {
@@ -802,6 +1108,22 @@ func defaultOutputPath(format string, opts Options, report model.Report, ext, ti
 		return base + ".tree.txt"
 	}
 	return base + "." + ext
+}
+
+func vpnOutputBaseName(opts Options, timestamp string) string {
+	org := statusValueOrAll(opts.Org)
+	workload := strings.TrimSpace(opts.Workload)
+	environment := strings.TrimSpace(opts.Environment)
+	switch {
+	case workload == "" && environment == "":
+		return fmt.Sprintf("netmap-vpn-%s-all-%s", org, timestamp)
+	case workload == "":
+		return fmt.Sprintf("netmap-vpn-%s-all-%s-%s", org, environment, timestamp)
+	case environment == "":
+		return fmt.Sprintf("netmap-vpn-%s-%s-all-%s", org, workload, timestamp)
+	default:
+		return fmt.Sprintf("netmap-vpn-%s-%s-%s-%s", org, workload, environment, timestamp)
+	}
 }
 
 func routerKey(region, name string) string {
@@ -926,35 +1248,6 @@ func projectIDFromResourceURL(value string) string {
 		}
 	}
 	return ""
-}
-
-func matchDestinationVPNTunnel(sourceTunnel model.VPNTunnel, sourceGateway, destinationGateway model.VPNGateway, destinationTunnels []model.VPNTunnel) (model.VPNTunnel, bool) {
-	var candidates []model.VPNTunnel
-	for _, tunnel := range destinationTunnels {
-		if strings.TrimSpace(tunnel.PeerGCPGateway) == "" {
-			continue
-		}
-		if strings.TrimSpace(sourceGateway.SelfLink) != "" && strings.TrimSpace(tunnel.PeerGCPGateway) != strings.TrimSpace(sourceGateway.SelfLink) {
-			continue
-		}
-		if strings.TrimSpace(destinationGateway.Name) != "" && strings.TrimSpace(tunnel.VPNGateway) != "" && tunnel.VPNGateway != destinationGateway.Name {
-			continue
-		}
-		if strings.TrimSpace(sourceTunnel.VPNGatewayInterface) != "" && strings.TrimSpace(tunnel.VPNGatewayInterface) != "" && tunnel.VPNGatewayInterface != sourceTunnel.VPNGatewayInterface {
-			continue
-		}
-		candidates = append(candidates, tunnel)
-	}
-	if len(candidates) == 0 {
-		return model.VPNTunnel{}, false
-	}
-	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].Region != candidates[j].Region {
-			return candidates[i].Region < candidates[j].Region
-		}
-		return candidates[i].Name < candidates[j].Name
-	})
-	return candidates[0], true
 }
 
 func taskLabel(target config.ResolvedTarget) string {

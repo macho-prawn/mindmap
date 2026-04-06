@@ -205,10 +205,10 @@ func TestRenderVPNCSV(t *testing.T) {
 		t.Fatalf("expected csv extension, got %q", ext)
 	}
 	content := string(data)
-	if !strings.Contains(content, "org,workload,environment,src_project,src_region,src_vpn_gateway,src_vpn_gateway_type,src_cloud_router,src_cloud_router_asn,src_cloud_router_interface,src_cloud_router_interface_ip,src_vpn_tunnel,src_vpn_tunnel_status,mapped,bgp_peering_status,dst_vpn_tunnel,dst_vpn_tunnel_status,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,dst_vpn_gateway,dst_vpn_gateway_type,dst_region,dst_project") {
+	if !strings.Contains(content, "org,workload,environment,src_project,src_region,src_vpn_gateway,src_vpn_gateway_type,src_cloud_router,src_cloud_router_asn,src_cloud_router_interface,src_cloud_router_interface_ip,src_vpn_tunnel,src_vpn_tunnel_status,bgp_peering_status,dst_vpn_tunnel,dst_vpn_tunnel_status,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,dst_vpn_gateway,dst_vpn_gateway_type,dst_region,dst_project") {
 		t.Fatalf("unexpected vpn csv header order: %s", content)
 	}
-	if strings.Contains(content, "remote_bgp_peer") || strings.Contains(content, "src_vpn_gateway_status") || strings.Contains(content, "dst_vpn_gateway_status") {
+	if strings.Contains(content, "mapped") || strings.Contains(content, "remote_bgp_peer") || strings.Contains(content, "src_vpn_gateway_status") || strings.Contains(content, "dst_vpn_gateway_status") {
 		t.Fatalf("unexpected vpn-only removed fields in csv output: %s", content)
 	}
 }
@@ -263,7 +263,7 @@ func TestRenderVPNJSON(t *testing.T) {
 	if !strings.Contains(content, `"bgp_peering_statuses"`) || !strings.Contains(content, `"dst_vpn_tunnels"`) {
 		t.Fatalf("expected vpn hierarchy to include bgp status and destination tunnel nodes, got: %s", content)
 	}
-	if strings.Contains(content, `"remote_bgp_peer"`) || strings.Contains(content, `"src_vpn_gateway_status"`) || strings.Contains(content, `"dst_vpn_gateway_status"`) {
+	if strings.Contains(content, `"mapped"`) || strings.Contains(content, `"remote_bgp_peer"`) || strings.Contains(content, `"src_vpn_gateway_status"`) || strings.Contains(content, `"dst_vpn_gateway_status"`) {
 		t.Fatalf("unexpected removed vpn fields in json output: %s", content)
 	}
 }
@@ -315,7 +315,7 @@ func TestRenderVPNTree(t *testing.T) {
 	if !strings.Contains(content, "bgp_peering_status: UP") || !strings.Contains(content, "dst_cloud_router: router-a [dst_cloud_router_asn: 64512, dst_cloud_router_interface: if-dst-a-1, dst_cloud_router_interface_ip: 169.254.20.1]") {
 		t.Fatalf("expected status and destination router nodes in vpn tree output, got: %s", content)
 	}
-	if strings.Contains(content, "remote_bgp_peer") || strings.Contains(content, "src_vpn_gateway_status") || strings.Contains(content, "dst_vpn_gateway_status") {
+	if strings.Contains(content, "mapped:") || strings.Contains(content, "remote_bgp_peer") || strings.Contains(content, "src_vpn_gateway_status") || strings.Contains(content, "dst_vpn_gateway_status") {
 		t.Fatalf("unexpected removed vpn fields in tree output: %s", content)
 	}
 }
@@ -604,7 +604,7 @@ func TestRenderVPNMermaidCollapsesProjectRegionPairsIntoSeparateNodes(t *testing
 	if !strings.Contains(content, "bgp_peering_status: UP") {
 		t.Fatalf("expected dedicated bgp status node in vpn mermaid output, got %s", content)
 	}
-	if strings.Contains(content, "remote_bgp_peer") {
+	if strings.Contains(content, "mapped:") || strings.Contains(content, "remote_bgp_peer") {
 		t.Fatalf("unexpected remote peer fields in vpn mermaid output: %s", content)
 	}
 	if strings.Contains(content, "src_interconnect:") {

@@ -170,10 +170,10 @@ Uses the same csv, tsv, json, tree, mermaid, and html output formats as intercon
 
 | Case | Interconnect | VPN |
 | --- | --- | --- |
-| Default output with omitted `-f` | `netmap-interconnect-<src>-to-<dst>-<timestamp>.mmd` | `netmap-vpn-<src>-to-<dst>-<timestamp>.mmd` |
-| Explicit format extensions | `html`, `csv`, `tsv`, `json`, `tree.txt` on the `netmap-interconnect-<src>-to-<dst>-<timestamp>` base | `html`, `csv`, `tsv`, `json`, `tree.txt` on the `netmap-vpn-<src>-to-<dst>-<timestamp>` base |
+| Default output with omitted `-f` | `netmap-interconnect-<src>-to-<dst>-<timestamp>.mmd` | `netmap-vpn-<org>-<selector>-<timestamp>.mmd` |
+| Explicit format extensions | `html`, `csv`, `tsv`, `json`, `tree.txt` on the `netmap-interconnect-<src>-to-<dst>-<timestamp>` base | `html`, `csv`, `tsv`, `json`, `tree.txt` on the `netmap-vpn-<org>-<selector>-<timestamp>` base |
 | Aggregate output | `netmap-interconnect-<src>-to-<org>-all-<timestamp>.<ext>` | `netmap-vpn-<org>-all-<timestamp>.<ext>` |
-| Source naming input | `<src>` comes from `-p` | `<src>` comes from the resolved source project when exactly one source project and one destination project are discovered; aggregate VPN output omits a source segment |
+| Selector naming | n/a | `-o/-w/-e`: `<workload>-<env>`; `-o` only: `all`; `-o/-w`: `<workload>-all`; `-o/-e`: `all-<env>` |
 
 `-f html` writes a self-contained offline Mermaid viewer page that can be opened directly in a browser.
 
@@ -197,7 +197,7 @@ org,workload,environment,src_project,src_interconnect,mapped,src_region,src_stat
 #### VPN
 
 ```text
-org,workload,environment,src_project,src_region,src_vpn_gateway,src_vpn_gateway_type,src_cloud_router,src_cloud_router_asn,src_cloud_router_interface,src_cloud_router_interface_ip,src_vpn_tunnel,src_vpn_tunnel_status,mapped,bgp_peering_status,dst_vpn_tunnel,dst_vpn_tunnel_status,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,dst_vpn_gateway,dst_vpn_gateway_type,dst_region,dst_project
+org,workload,environment,src_project,src_region,src_vpn_gateway,src_vpn_gateway_type,src_cloud_router,src_cloud_router_asn,src_cloud_router_interface,src_cloud_router_interface_ip,src_vpn_tunnel,src_vpn_tunnel_status,bgp_peering_status,dst_vpn_tunnel,dst_vpn_tunnel_status,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,dst_vpn_gateway,dst_vpn_gateway_type,dst_region,dst_project
 ```
 
 ## Notes

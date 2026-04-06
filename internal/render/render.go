@@ -61,7 +61,6 @@ var vpnSeparatedHeader = []string{
 	"src_cloud_router_interface_ip",
 	"src_vpn_tunnel",
 	"src_vpn_tunnel_status",
-	"mapped",
 	"bgp_peering_status",
 	"dst_vpn_tunnel",
 	"dst_vpn_tunnel_status",
@@ -166,7 +165,6 @@ func vpnSeparatedRecord(item model.MappingItem) []string {
 		item.SrcCloudRouterInterfaceIP,
 		item.SrcVPNTunnel,
 		item.SrcVPNTunnelStatus,
-		fmt.Sprintf("%t", item.Mapped),
 		item.BGPPeeringStatus,
 		item.DstVPNTunnel,
 		item.DstVPNTunnelStatus,
@@ -1088,7 +1086,6 @@ type vpnJSONSourceRouter struct {
 type vpnJSONSourceTunnel struct {
 	SrcVPNTunnel       string             `json:"src_vpn_tunnel"`
 	SrcVPNTunnelStatus string             `json:"src_vpn_tunnel_status"`
-	Mapped             bool               `json:"mapped"`
 	BGPStatuses        []vpnJSONBGPStatus `json:"bgp_peering_statuses,omitempty"`
 }
 
@@ -1164,7 +1161,6 @@ func buildVPNJSONOrg(group vpnOrgGroup) vpnJSONOrgNode {
 								tunnelNode := vpnJSONSourceTunnel{
 									SrcVPNTunnel:       valueOrUnknown(srcTunnel.SrcVPNTunnel),
 									SrcVPNTunnelStatus: valueOrUnknown(srcTunnel.SrcVPNTunnelStatus),
-									Mapped:             srcTunnel.Mapped,
 								}
 								for _, status := range srcTunnel.BGPStatuses {
 									statusNode := vpnJSONBGPStatus{
@@ -1689,11 +1685,10 @@ func drawVPNTreeSourceTunnel(b *strings.Builder, tunnel vpnSourceTunnelGroup, in
 	}
 	fmt.Fprintf(
 		b,
-		"%s%s src_vpn_tunnel: %s [mapped: %t, src_vpn_tunnel_status: %s]\n",
+		"%s%s src_vpn_tunnel: %s [src_vpn_tunnel_status: %s]\n",
 		indent,
 		prefix,
 		valueOrUnknown(tunnel.SrcVPNTunnel),
-		tunnel.Mapped,
 		valueOrUnknown(tunnel.SrcVPNTunnelStatus),
 	)
 	if !tunnel.Mapped {
@@ -1821,9 +1816,8 @@ func vpnSourceRouterItemLabel(item model.MappingItem) string {
 
 func vpnSourceTunnelItemLabel(item model.MappingItem) string {
 	return fmt.Sprintf(
-		"src_vpn_tunnel: %s<br>mapped: %t<br>src_vpn_tunnel_status: %s",
+		"src_vpn_tunnel: %s<br>src_vpn_tunnel_status: %s",
 		valueOrUnknown(item.SrcVPNTunnel),
-		item.Mapped,
 		valueOrUnknown(item.SrcVPNTunnelStatus),
 	)
 }

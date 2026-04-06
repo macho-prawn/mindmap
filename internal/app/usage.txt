@@ -33,8 +33,10 @@ Output:
   JSON output file:    netmap-interconnect-<src>-to-<dst>-<timestamp>.json
   Tree output file:    netmap-interconnect-<src>-to-<dst>-<timestamp>.tree.txt
   Org fanout output:   netmap-interconnect-<src>-to-<org>-all-<timestamp>.<ext>
-  VPN output file:     netmap-vpn-<src>-to-<dst>-<timestamp>.<ext>
-  VPN aggregate file:  netmap-vpn-<org>-all-<timestamp>.<ext>
+  VPN exact output:    netmap-vpn-<org>-<workload>-<env>-<timestamp>.<ext>
+  VPN org output:      netmap-vpn-<org>-all-<timestamp>.<ext>
+  VPN workload output: netmap-vpn-<org>-<workload>-all-<timestamp>.<ext>
+  VPN env output:      netmap-vpn-<org>-all-<env>-<timestamp>.<ext>
 
 VPN Behavior:
   -p is invalid for -t vpn.
