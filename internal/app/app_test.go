@@ -306,19 +306,19 @@ func TestRunWritesMermaidByDefault(t *testing.T) {
 		t.Fatalf("expected mermaid output file to be written")
 	}
 	content := string(data)
-	if !strings.Contains(content, "flowchart LR") || !strings.Contains(content, "remote_bgp_peer: peer-1") || !strings.Contains(content, "dst_cloud_router_interface: if-1") {
+	if !strings.Contains(content, "flowchart LR") || !strings.Contains(content, "remote_bgp_peer: peer-1") || !strings.Contains(content, "cloud_router_interface: if-1") {
 		t.Fatalf("unexpected mermaid content: %s", content)
 	}
 	if !strings.Contains(content, "<br>") || strings.Contains(content, "\\n") {
 		t.Fatalf("expected mermaid-compatible line breaks, got: %s", content)
 	}
-	if !strings.Contains(content, "src_macsec_enabled: true") || !strings.Contains(content, "src_macsec_keyname: macsec-key-a") {
+	if !strings.Contains(content, "macsec_enabled: true") || !strings.Contains(content, "macsec_keyname: macsec-key-a") {
 		t.Fatalf("unexpected mermaid content: %s", content)
 	}
-	if !strings.Contains(content, "dst_cloud_router_asn: 64512") {
+	if !strings.Contains(content, "cloud_router_asn: 64512") {
 		t.Fatalf("unexpected mermaid content: %s", content)
 	}
-	if !strings.Contains(content, "dst_vpc: vpc-a") {
+	if !strings.Contains(content, "vpc: vpc-a") {
 		t.Fatalf("unexpected mermaid content: %s", content)
 	}
 	if !strings.Contains(content, "remote_bgp_peer_asn: 64550") {
@@ -728,6 +728,9 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 	if projectItems[0].SrcCloudRouter != "router-src" || projectItems[0].SrcCloudRouterInterface != "if-src" || projectItems[0].SrcCloudRouterInterfaceIP != "169.254.1.1/30" {
 		t.Fatalf("expected source router fields in vpn project item, got %+v", projectItems[0])
 	}
+	if projectItems[0].SrcVPC != "src-vpc" || projectItems[0].DstVPC != "dst-vpc" {
+		t.Fatalf("expected source and destination vpc fields in vpn project item, got %+v", projectItems[0])
+	}
 	if projectItems[0].SrcVPNGatewayInterface != "0" || projectItems[0].DstVPNGatewayInterface != "0" || projectItems[0].SrcVPNGatewayIP != "34.0.0.1" || projectItems[0].DstVPNGatewayIP != "35.0.0.1" {
 		t.Fatalf("expected vpn gateway interface/ip fields in vpn project item, got %+v", projectItems[0])
 	}
@@ -747,20 +750,29 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 		t.Fatalf("expected vpn mermaid output file to be written, got files: %#v", store.files)
 	}
 	content := string(data)
-	if !strings.Contains(content, "src_vpn_gateway: ha-src") || !strings.Contains(content, "src_vpn_tunnel: tunnel-src") {
+	if !strings.Contains(content, "vpn_gateway: ha-src") || !strings.Contains(content, "vpn_tunnel: tunnel-src") {
 		t.Fatalf("expected vpn source nodes in mermaid output, got: %s", content)
 	}
-	if !strings.Contains(content, "src_vpn_gateway_interface: 0") || !strings.Contains(content, "dst_vpn_gateway_interface: 0") || !strings.Contains(content, "src_vpn_gateway_ip: 34.0.0.1") || !strings.Contains(content, "dst_vpn_gateway_ip: 35.0.0.1") {
+	if !strings.Contains(content, "region: us-central1<br>vpc: src-vpc") || !strings.Contains(content, "region: us-central1<br>vpc: dst-vpc") {
+		t.Fatalf("expected vpn region nodes to include vpc details in mermaid output, got: %s", content)
+	}
+	if !strings.Contains(content, "vpn_gateway_interface: 0") || !strings.Contains(content, "vpn_gateway_ip: 34.0.0.1") || !strings.Contains(content, "vpn_gateway_ip: 35.0.0.1") {
 		t.Fatalf("expected vpn gateway interface/ip fields in mermaid output, got: %s", content)
 	}
-	if !strings.Contains(content, "src_cloud_router: router-src") {
+	if !strings.Contains(content, "cloud_router: router-src") {
 		t.Fatalf("expected vpn source router node in mermaid output, got: %s", content)
 	}
-	if !strings.Contains(content, "dst_vpn_gateway: ha-dst") || !strings.Contains(content, "dst_vpn_tunnel: tunnel-dst") {
+	if !strings.Contains(content, "vpn_gateway: ha-dst") || !strings.Contains(content, "vpn_tunnel: tunnel-dst") {
 		t.Fatalf("expected vpn destination nodes in mermaid output, got: %s", content)
 	}
-	if !strings.Contains(content, "dst_cloud_router: router-dst") || !strings.Contains(content, "bgp_peering_status: UP") {
+	if !strings.Contains(content, "cloud_router: router-dst") || !strings.Contains(content, "bgp_peering_status: UP") {
 		t.Fatalf("expected destination router and bgp status details in mermaid output, got: %s", content)
+	}
+	if strings.Index(content, "vpn_tunnel: tunnel-src") > strings.Index(content, "cloud_router: router-src") {
+		t.Fatalf("expected source tunnel before source router in mermaid output, got: %s", content)
+	}
+	if strings.Index(content, "bgp_peering_status: UP") > strings.Index(content, "cloud_router: router-dst") || strings.Index(content, "cloud_router: router-dst") > strings.Index(content, "vpn_tunnel: tunnel-dst") {
+		t.Fatalf("expected bgp status between cloud routers and destination tunnel after destination router, got: %s", content)
 	}
 	if strings.Contains(content, "remote_bgp_peer:") {
 		t.Fatalf("unexpected remote peer fields in vpn mermaid output, got: %s", content)
@@ -768,7 +780,7 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 	if strings.Contains(content, "mapped:") {
 		t.Fatalf("unexpected mapped field in vpn mermaid output, got: %s", content)
 	}
-	if strings.Contains(content, "src_interconnect:") {
+	if strings.Contains(content, "src_interconnect:") || strings.Contains(content, "src_vpn_gateway:") || strings.Contains(content, "dst_vpn_gateway:") || strings.Contains(content, "src_cloud_router:") || strings.Contains(content, "dst_cloud_router:") || strings.Contains(content, "src_vpn_tunnel:") || strings.Contains(content, "dst_vpn_tunnel:") {
 		t.Fatalf("unexpected interconnect node in vpn mermaid output: %s", content)
 	}
 	statusOutput := status.String()
@@ -943,6 +955,9 @@ func TestBuildVPNProjectItemsMatchesDestinationInterfaceByPeerEvidence(t *testin
 	item := items[0]
 	if item.DstVPNTunnel != "tunnel-dst-match" || item.DstCloudRouter != "router-dst-match" {
 		t.Fatalf("expected peer evidence to select the matching destination tunnel and router, got %+v", item)
+	}
+	if item.SrcVPC != "src-vpc" || item.DstVPC != "dst-vpc" {
+		t.Fatalf("expected peer evidence flow to retain source and destination vpc fields, got %+v", item)
 	}
 	if item.SrcVPNGatewayInterface != "0" || item.DstVPNGatewayInterface != "0" || item.SrcVPNGatewayIP != "34.0.0.1" || item.DstVPNGatewayIP != "35.0.0.1" {
 		t.Fatalf("expected vpn gateway interface/ip fields to propagate, got %+v", item)

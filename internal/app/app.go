@@ -253,6 +253,7 @@ type vpnProjectData struct {
 type vpnSourceInterfaceCandidate struct {
 	RouterName    string
 	RouterASN     string
+	RouterNetwork string
 	InterfaceName string
 	InterfaceIP   string
 	Peers         []model.BGPPeer
@@ -708,6 +709,7 @@ func baseItem(srcProject, dstProject string, interconnect model.DedicatedInterco
 func vpnBaseItem(srcProject string, gateway model.VPNGateway, tunnel model.VPNTunnel) model.MappingItem {
 	item := model.MappingItem{
 		SrcProject:             srcProject,
+		SrcVPC:                 firstNonEmpty(gateway.Network),
 		SrcRegion:              firstNonEmpty(tunnel.Region, gateway.Region),
 		SrcVPNGateway:          gateway.Name,
 		SrcVPNGatewayType:      gateway.Type,
@@ -723,8 +725,9 @@ func vpnBaseItem(srcProject string, gateway model.VPNGateway, tunnel model.VPNTu
 func vpnSourceInterfaceCandidates(sourceData vpnProjectData, tunnel model.VPNTunnel) []vpnSourceInterfaceCandidate {
 	router := sourceData.RouterByKey[routerKey(tunnel.Region, tunnel.Router)]
 	base := vpnSourceInterfaceCandidate{
-		RouterName: firstNonEmpty(router.Name, tunnel.Router),
-		RouterASN:  router.ASN,
+		RouterName:    firstNonEmpty(router.Name, tunnel.Router),
+		RouterASN:     router.ASN,
+		RouterNetwork: router.Network,
 	}
 	interfaces := interfacesForTunnel(router, tunnel.Name)
 	if len(interfaces) == 0 {
@@ -742,6 +745,7 @@ func vpnSourceInterfaceCandidates(sourceData vpnProjectData, tunnel model.VPNTun
 		candidates = append(candidates, vpnSourceInterfaceCandidate{
 			RouterName:    base.RouterName,
 			RouterASN:     base.RouterASN,
+			RouterNetwork: base.RouterNetwork,
 			InterfaceName: iface.Name,
 			InterfaceIP:   preferredInterfaceIP(iface, peers),
 			Peers:         peers,
@@ -761,6 +765,7 @@ func vpnItemsForSourceCandidates(base model.MappingItem, candidates []vpnSourceI
 }
 
 func applyVPNSourceCandidate(item *model.MappingItem, candidate vpnSourceInterfaceCandidate) {
+	item.SrcVPC = firstNonEmpty(item.SrcVPC, candidate.RouterNetwork)
 	item.SrcCloudRouter = candidate.RouterName
 	item.SrcCloudRouterASN = candidate.RouterASN
 	item.SrcCloudRouterInterface = candidate.InterfaceName

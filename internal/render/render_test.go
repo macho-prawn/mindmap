@@ -96,6 +96,7 @@ func sampleVPNReport() model.Report {
 				Workload:                  "native",
 				Environment:               "dev",
 				SrcProject:                "src-a",
+				SrcVPC:                    "src-vpc-a",
 				SrcRegion:                 "us-central1",
 				SrcVPNGateway:             "ha-a",
 				SrcVPNGatewayType:         "ha",
@@ -110,6 +111,7 @@ func sampleVPNReport() model.Report {
 				Mapped:                    true,
 				DstProject:                "dst-a",
 				DstRegion:                 "us-central1",
+				DstVPC:                    "dst-vpc-a",
 				DstVPNGateway:             "ha-peer",
 				DstVPNGatewayType:         "ha",
 				DstVPNTunnel:              "tunnel-peer-1",
@@ -127,6 +129,7 @@ func sampleVPNReport() model.Report {
 				Workload:                  "native",
 				Environment:               "dev",
 				SrcProject:                "src-a",
+				SrcVPC:                    "src-vpc-a",
 				SrcRegion:                 "us-central1",
 				SrcVPNGateway:             "ha-a",
 				SrcVPNGatewayType:         "ha",
@@ -141,6 +144,7 @@ func sampleVPNReport() model.Report {
 				Mapped:                    true,
 				DstProject:                "dst-a",
 				DstRegion:                 "us-central1",
+				DstVPC:                    "dst-vpc-a",
 				DstVPNGateway:             "ha-peer",
 				DstVPNGatewayType:         "ha",
 				DstVPNTunnel:              "tunnel-peer-2",
@@ -158,6 +162,7 @@ func sampleVPNReport() model.Report {
 				Workload:                  "native",
 				Environment:               "dev",
 				SrcProject:                "src-b",
+				SrcVPC:                    "src-vpc-b",
 				SrcRegion:                 "europe-west1",
 				SrcVPNGateway:             "ha-b",
 				SrcVPNGatewayType:         "ha",
@@ -172,6 +177,7 @@ func sampleVPNReport() model.Report {
 				Mapped:                    true,
 				DstProject:                "dst-b",
 				DstRegion:                 "europe-west1",
+				DstVPC:                    "dst-vpc-b",
 				DstVPNGateway:             "ha-peer-b",
 				DstVPNGatewayType:         "ha",
 				DstVPNTunnel:              "tunnel-peer-b-1",
@@ -243,13 +249,13 @@ func TestRenderJSON(t *testing.T) {
 	if !strings.Contains(content, `"name": "native"`) || !strings.Contains(content, `"name": "platform"`) {
 		t.Fatalf("expected workload hierarchy, got: %s", content)
 	}
-	if !strings.Contains(content, `"src_macsec_enabled": true`) || !strings.Contains(content, `"src_macsec_keyname": "macsec-key-a"`) {
+	if !strings.Contains(content, `"macsec_enabled": true`) || !strings.Contains(content, `"macsec_keyname": "macsec-key-a"`) {
 		t.Fatalf("expected source macsec data in json output, got: %s", content)
 	}
-	if !strings.Contains(content, `"dst_cloud_router_asn": "64512"`) {
+	if !strings.Contains(content, `"cloud_router_asn": "64512"`) {
 		t.Fatalf("expected router asn in json output, got: %s", content)
 	}
-	if !strings.Contains(content, `"dst_vpc": "vpc-a"`) {
+	if !strings.Contains(content, `"vpc": "vpc-a"`) {
 		t.Fatalf("expected vpc in json output, got: %s", content)
 	}
 	if !strings.Contains(content, `"remote_bgp_peer_asn": "64550"`) {
@@ -257,6 +263,9 @@ func TestRenderJSON(t *testing.T) {
 	}
 	if !strings.Contains(content, `"src_interconnects"`) || !strings.Contains(content, `"dst_projects"`) || !strings.Contains(content, `"dst_regions"`) {
 		t.Fatalf("expected hierarchical destination data, got: %s", content)
+	}
+	if strings.Contains(content, `"src_project"`) || strings.Contains(content, `"src_interconnect"`) || strings.Contains(content, `"src_region"`) || strings.Contains(content, `"dst_project"`) || strings.Contains(content, `"dst_region"`) || strings.Contains(content, `"dst_vpc"`) || strings.Contains(content, `"dst_vlan_attachment"`) || strings.Contains(content, `"dst_cloud_router"`) {
+		t.Fatalf("expected interconnect json leaf keys to be unprefixed, got: %s", content)
 	}
 }
 
@@ -269,14 +278,20 @@ func TestRenderVPNJSON(t *testing.T) {
 		t.Fatalf("expected json extension, got %q", ext)
 	}
 	content := string(data)
-	if !strings.Contains(content, `"src_cloud_router": "router-src-a"`) || !strings.Contains(content, `"dst_cloud_router": "router-a"`) {
+	if !strings.Contains(content, `"vpc": "src-vpc-a"`) || !strings.Contains(content, `"vpc": "dst-vpc-a"`) {
+		t.Fatalf("expected source and destination vpc fields on vpn region nodes in json output, got: %s", content)
+	}
+	if !strings.Contains(content, `"cloud_router": "router-src-a"`) || !strings.Contains(content, `"cloud_router": "router-a"`) {
 		t.Fatalf("expected source and destination router nodes in vpn json output, got: %s", content)
 	}
-	if !strings.Contains(content, `"src_vpn_gateway_interface": "0"`) || !strings.Contains(content, `"dst_vpn_gateway_interface": "0"`) || !strings.Contains(content, `"src_vpn_gateway_ip": "34.0.0.1"`) || !strings.Contains(content, `"dst_vpn_gateway_ip": "35.0.0.1"`) {
+	if !strings.Contains(content, `"vpn_gateway_interface": "0"`) || !strings.Contains(content, `"vpn_gateway_ip": "34.0.0.1"`) || !strings.Contains(content, `"vpn_gateway_ip": "35.0.0.1"`) {
 		t.Fatalf("expected vpn gateway interface/ip fields in json output, got: %s", content)
 	}
 	if !strings.Contains(content, `"bgp_peering_statuses"`) || !strings.Contains(content, `"dst_vpn_tunnels"`) {
 		t.Fatalf("expected vpn hierarchy to include bgp status and destination tunnel nodes, got: %s", content)
+	}
+	if strings.Contains(content, `"src_project"`) || strings.Contains(content, `"src_region"`) || strings.Contains(content, `"src_vpn_gateway"`) || strings.Contains(content, `"src_vpn_tunnel"`) || strings.Contains(content, `"src_cloud_router"`) || strings.Contains(content, `"dst_project"`) || strings.Contains(content, `"dst_region"`) || strings.Contains(content, `"dst_vpn_gateway"`) || strings.Contains(content, `"dst_vpn_tunnel"`) || strings.Contains(content, `"dst_cloud_router"`) || strings.Contains(content, `"src_vpc"`) || strings.Contains(content, `"dst_vpc"`) {
+		t.Fatalf("expected vpn json leaf keys to be unprefixed, got: %s", content)
 	}
 	if strings.Contains(content, `"mapped"`) || strings.Contains(content, `"remote_bgp_peer"`) || strings.Contains(content, `"src_vpn_gateway_status"`) || strings.Contains(content, `"dst_vpn_gateway_status"`) {
 		t.Fatalf("unexpected removed vpn fields in json output: %s", content)
@@ -295,22 +310,22 @@ func TestRenderTree(t *testing.T) {
 	if strings.Contains(content, "dst_cloud_router_state") {
 		t.Fatalf("unexpected router state in tree output: %s", content)
 	}
-	if !strings.Contains(content, "org: dbc\n|-- workload: native\n|   `-- environment: dev\n|       `-- src_project: src") {
+	if !strings.Contains(content, "org: dbc\n|-- workload: native\n|   `-- environment: dev\n|       `-- project: src") {
 		t.Fatalf("unexpected tree hierarchy: %s", content)
 	}
 	if !strings.Contains(content, "`-- workload: platform") {
 		t.Fatalf("expected second workload branch, got: %s", content)
 	}
-	if !strings.Contains(content, "src_macsec_enabled: true, src_macsec_keyname: macsec-key-a") {
+	if !strings.Contains(content, "macsec_enabled: true, macsec_keyname: macsec-key-a") {
 		t.Fatalf("expected source macsec data in tree output: %s", content)
 	}
-	if !strings.Contains(content, "dst_cloud_router: router-1 [dst_cloud_router_asn: 64512]") {
+	if !strings.Contains(content, "cloud_router: router-1 [cloud_router_asn: 64512]") {
 		t.Fatalf("expected router asn in tree output: %s", content)
 	}
 	if !strings.Contains(content, "remote_bgp_peer: peer-1 [remote_bgp_peer_ip: 169.254.1.2, remote_bgp_peer_asn: 64550, bgp_peering_status: UP]") {
 		t.Fatalf("expected peer asn in tree output: %s", content)
 	}
-	if !strings.Contains(content, "dst_vlan_attachment: attachment-1 [dst_vpc: vpc-a, dst_vlan_attachment_state: ACTIVE, dst_vlan_attachment_vlanid: 101]") || !strings.Contains(content, "dst_project: dst-b [mapped: false]") {
+	if !strings.Contains(content, "vlan_attachment: attachment-1 [vpc: vpc-a, vlan_attachment_state: ACTIVE, vlan_attachment_vlanid: 101]") || !strings.Contains(content, "project: dst-b [mapped: false]") {
 		t.Fatalf("unexpected tree output: %s", content)
 	}
 }
@@ -324,14 +339,23 @@ func TestRenderVPNTree(t *testing.T) {
 		t.Fatalf("expected tree extension, got %q", ext)
 	}
 	content := string(data)
-	if !strings.Contains(content, "src_cloud_router: router-src-a [src_cloud_router_asn: 64510, src_cloud_router_interface: if-src-a-1, src_cloud_router_interface_ip: 169.254.10.1]") {
+	if !strings.Contains(content, "region: us-central1 [vpc: src-vpc-a]") || !strings.Contains(content, "region: us-central1 [vpc: dst-vpc-a]") {
+		t.Fatalf("expected source and destination vpc fields on region nodes in vpn tree output, got: %s", content)
+	}
+	if !strings.Contains(content, "cloud_router: router-src-a [cloud_router_asn: 64510, cloud_router_interface: if-src-a-1, cloud_router_interface_ip: 169.254.10.1]") {
 		t.Fatalf("expected source router node in vpn tree output, got: %s", content)
 	}
-	if !strings.Contains(content, "src_vpn_tunnel: tunnel-a-1 [src_vpn_gateway_interface: 0, src_vpn_gateway_ip: 34.0.0.1, src_vpn_tunnel_status: ESTABLISHED]") || !strings.Contains(content, "dst_vpn_tunnel: tunnel-peer-1 [dst_vpn_gateway_interface: 0, dst_vpn_gateway_ip: 35.0.0.1, dst_vpn_tunnel_status: ESTABLISHED]") {
+	if !strings.Contains(content, "vpn_tunnel: tunnel-a-1 [vpn_gateway_interface: 0, vpn_gateway_ip: 34.0.0.1, vpn_tunnel_status: ESTABLISHED]") || !strings.Contains(content, "vpn_tunnel: tunnel-peer-1 [vpn_gateway_interface: 0, vpn_gateway_ip: 35.0.0.1, vpn_tunnel_status: ESTABLISHED]") {
 		t.Fatalf("expected vpn gateway interface/ip fields on tunnel nodes in tree output, got: %s", content)
 	}
-	if !strings.Contains(content, "bgp_peering_status: UP") || !strings.Contains(content, "dst_cloud_router: router-a [dst_cloud_router_asn: 64512, dst_cloud_router_interface: if-dst-a-1, dst_cloud_router_interface_ip: 169.254.20.1]") {
+	if !strings.Contains(content, "bgp_peering_status: UP") || !strings.Contains(content, "cloud_router: router-a [cloud_router_asn: 64512, cloud_router_interface: if-dst-a-1, cloud_router_interface_ip: 169.254.20.1]") {
 		t.Fatalf("expected status and destination router nodes in vpn tree output, got: %s", content)
+	}
+	if strings.Index(content, "vpn_tunnel: tunnel-a-1 [vpn_gateway_interface: 0, vpn_gateway_ip: 34.0.0.1, vpn_tunnel_status: ESTABLISHED]") > strings.Index(content, "cloud_router: router-src-a [cloud_router_asn: 64510, cloud_router_interface: if-src-a-1, cloud_router_interface_ip: 169.254.10.1]") {
+		t.Fatalf("expected source tunnel to render before source router in vpn tree output, got: %s", content)
+	}
+	if strings.Index(content, "bgp_peering_status: UP") > strings.Index(content, "cloud_router: router-a [cloud_router_asn: 64512, cloud_router_interface: if-dst-a-1, cloud_router_interface_ip: 169.254.20.1]") || strings.Index(content, "cloud_router: router-a [cloud_router_asn: 64512, cloud_router_interface: if-dst-a-1, cloud_router_interface_ip: 169.254.20.1]") > strings.Index(content, "vpn_tunnel: tunnel-peer-1 [vpn_gateway_interface: 0, vpn_gateway_ip: 35.0.0.1, vpn_tunnel_status: ESTABLISHED]") {
+		t.Fatalf("expected bgp status between source and destination routers, and destination tunnel after destination router in vpn tree output, got: %s", content)
 	}
 	if strings.Contains(content, "mapped:") || strings.Contains(content, "remote_bgp_peer") || strings.Contains(content, "src_vpn_gateway_status") || strings.Contains(content, "dst_vpn_gateway_status") {
 		t.Fatalf("unexpected removed vpn fields in tree output: %s", content)
@@ -356,7 +380,7 @@ func TestRenderMermaidCollapsesSharedProjectAndRegion(t *testing.T) {
 	if !strings.Contains(content, "org: dbc") || !strings.Contains(content, "workload: native") || !strings.Contains(content, "environment: dev") {
 		t.Fatalf("expected selector hierarchy, got %s", content)
 	}
-	if !strings.Contains(content, "dst_region: us-central1") || !strings.Contains(content, "dst_vlan_attachment: attachment-1") || !strings.Contains(content, "remote_bgp_peer: peer-1") {
+	if !strings.Contains(content, "region: us-central1") || !strings.Contains(content, "vlan_attachment: attachment-1") || !strings.Contains(content, "remote_bgp_peer: peer-1") {
 		t.Fatalf("expected destination fanout details, got %s", content)
 	}
 	if !strings.Contains(content, "<br>") {
@@ -365,13 +389,13 @@ func TestRenderMermaidCollapsesSharedProjectAndRegion(t *testing.T) {
 	if strings.Contains(content, "\\n") {
 		t.Fatalf("unexpected escaped newline in mermaid output: %s", content)
 	}
-	if !strings.Contains(content, "src_macsec_enabled: true") || !strings.Contains(content, "src_macsec_keyname: macsec-key-a") {
+	if !strings.Contains(content, "macsec_enabled: true") || !strings.Contains(content, "macsec_keyname: macsec-key-a") {
 		t.Fatalf("expected source macsec data in mermaid output, got %s", content)
 	}
-	if !strings.Contains(content, "dst_cloud_router_asn: 64512") {
+	if !strings.Contains(content, "cloud_router_asn: 64512") {
 		t.Fatalf("expected router asn in mermaid output, got %s", content)
 	}
-	if !strings.Contains(content, "dst_vpc: vpc-a") {
+	if !strings.Contains(content, "vpc: vpc-a") {
 		t.Fatalf("expected vpc in mermaid output, got %s", content)
 	}
 	if !strings.Contains(content, "remote_bgp_peer_asn: 64550") {
@@ -383,23 +407,23 @@ func TestRenderMermaidCollapsesSharedProjectAndRegion(t *testing.T) {
 	if strings.Contains(content, "remote_bgp_peer: peer-1<br>remote_bgp_peer_ip: 169.254.1.2<br>bgp_peering_status: UP") {
 		t.Fatalf("expected bgp status to be outside the remote peer node, got %s", content)
 	}
-	if countSubstring(content, "dst_project: dst-a") != 1 {
-		t.Fatalf("expected one shared dst_project node, got %d in %s", countSubstring(content, "dst_project: dst-a"), content)
+	if countSubstring(content, "project: dst-a") != 1 {
+		t.Fatalf("expected one shared destination project node, got %d in %s", countSubstring(content, "project: dst-a"), content)
 	}
-	if countSubstring(content, "dst_region: us-central1") != 1 {
-		t.Fatalf("expected one shared dst_region node, got %d in %s", countSubstring(content, "dst_region: us-central1"), content)
+	if countSubstring(content, "region: us-central1") != 1 {
+		t.Fatalf("expected one shared destination region node, got %d in %s", countSubstring(content, "region: us-central1"), content)
 	}
-	if countSubstring(content, "dst_vpc: vpc-a") != 1 {
-		t.Fatalf("expected one shared dst_vpc label, got %d in %s", countSubstring(content, "dst_vpc: vpc-a"), content)
+	if countSubstring(content, "vpc: vpc-a") != 1 {
+		t.Fatalf("expected one shared destination vpc label, got %d in %s", countSubstring(content, "vpc: vpc-a"), content)
 	}
 	if countSubstring(content, "environment: dev") != 1 {
 		t.Fatalf("expected one shared environment node, got %d in %s", countSubstring(content, "environment: dev"), content)
 	}
-	if countSubstring(content, "src_project: src") != 1 {
-		t.Fatalf("expected one shared src_project node, got %d in %s", countSubstring(content, "src_project: src"), content)
+	if countSubstring(content, "project: src") != 1 {
+		t.Fatalf("expected one shared source project node, got %d in %s", countSubstring(content, "project: src"), content)
 	}
-	if countSubstring(content, "src_interconnect: ic-1") != 1 {
-		t.Fatalf("expected one shared ic-1 node, got %d in %s", countSubstring(content, "src_interconnect: ic-1"), content)
+	if countSubstring(content, "interconnect: ic-1") != 1 {
+		t.Fatalf("expected one shared ic-1 node, got %d in %s", countSubstring(content, "interconnect: ic-1"), content)
 	}
 }
 
@@ -546,20 +570,20 @@ func TestRenderMermaidCollapsesAcrossWorkloadsEnvironmentsAndDestinations(t *tes
 	if countSubstring(content, "environment: dev") != 1 {
 		t.Fatalf("expected one shared dev environment node, got %d in %s", countSubstring(content, "environment: dev"), content)
 	}
-	if countSubstring(content, "src_project: src") != 1 {
-		t.Fatalf("expected one shared src_project node, got %d in %s", countSubstring(content, "src_project: src"), content)
+	if countSubstring(content, "project: src") != 1 {
+		t.Fatalf("expected one shared source project node, got %d in %s", countSubstring(content, "project: src"), content)
 	}
-	if countSubstring(content, "src_interconnect: ic-native") != 1 {
-		t.Fatalf("expected one shared dedicated interconnect node, got %d in %s", countSubstring(content, "src_interconnect: ic-native"), content)
+	if countSubstring(content, "interconnect: ic-native") != 1 {
+		t.Fatalf("expected one shared dedicated interconnect node, got %d in %s", countSubstring(content, "interconnect: ic-native"), content)
 	}
-	if countSubstring(content, "dst_region: us-central1") != 1 {
-		t.Fatalf("expected one shared dst_region node, got %d in %s", countSubstring(content, "dst_region: us-central1"), content)
+	if countSubstring(content, "region: us-central1") != 1 {
+		t.Fatalf("expected one shared destination region node, got %d in %s", countSubstring(content, "region: us-central1"), content)
 	}
-	if countSubstring(content, "dst_vpc: shared-vpc") != 1 {
-		t.Fatalf("expected one shared dst_vpc label, got %d in %s", countSubstring(content, "dst_vpc: shared-vpc"), content)
+	if countSubstring(content, "vpc: shared-vpc") != 1 {
+		t.Fatalf("expected one shared destination vpc label, got %d in %s", countSubstring(content, "vpc: shared-vpc"), content)
 	}
-	if countSubstring(content, "dst_project: project-") != 3 {
-		t.Fatalf("expected three distinct dst_project nodes, got %d in %s", countSubstring(content, "dst_project: project-"), content)
+	if countSubstring(content, "project: project-") != 3 {
+		t.Fatalf("expected three distinct destination project nodes, got %d in %s", countSubstring(content, "project: project-"), content)
 	}
 }
 
@@ -620,10 +644,10 @@ func TestRenderMermaidAddsSeparateVPCNodeWhenRegionHasMultipleVPCs(t *testing.T)
 	}
 
 	content := string(data)
-	if countSubstring(content, "dst_region: us-central1") != 1 {
-		t.Fatalf("expected one shared dst_region node, got %d in %s", countSubstring(content, "dst_region: us-central1"), content)
+	if countSubstring(content, "region: us-central1") != 1 {
+		t.Fatalf("expected one shared destination region node, got %d in %s", countSubstring(content, "region: us-central1"), content)
 	}
-	if countSubstring(content, "dst_vpc: vpc-a") != 1 || countSubstring(content, "dst_vpc: vpc-b") != 1 {
+	if countSubstring(content, "vpc: vpc-a") != 1 || countSubstring(content, "vpc: vpc-b") != 1 {
 		t.Fatalf("expected separate dst_vpc nodes, got %s", content)
 	}
 }
@@ -638,34 +662,43 @@ func TestRenderVPNMermaidCollapsesProjectRegionPairsIntoSeparateNodes(t *testing
 	}
 
 	content := string(data)
-	if !strings.Contains(content, "src_vpn_gateway: ha-a") || !strings.Contains(content, "dst_vpn_gateway: ha-peer") {
+	if !strings.Contains(content, "vpn_gateway: ha-a") || !strings.Contains(content, "vpn_gateway: ha-peer") {
 		t.Fatalf("expected vpn gateway labels, got %s", content)
 	}
-	if !strings.Contains(content, "src_vpn_gateway_interface: 0") || !strings.Contains(content, "dst_vpn_gateway_interface: 0") || !strings.Contains(content, "src_vpn_gateway_ip: 34.0.0.1") || !strings.Contains(content, "dst_vpn_gateway_ip: 35.0.0.1") {
+	if !strings.Contains(content, "vpc: src-vpc-a") || !strings.Contains(content, "vpc: dst-vpc-a") {
+		t.Fatalf("expected source and destination vpc values on vpn region nodes, got %s", content)
+	}
+	if !strings.Contains(content, "vpn_gateway_interface: 0") || !strings.Contains(content, "vpn_gateway_ip: 34.0.0.1") || !strings.Contains(content, "vpn_gateway_ip: 35.0.0.1") {
 		t.Fatalf("expected vpn tunnel labels to include gateway interface/ip fields, got %s", content)
 	}
-	if !strings.Contains(content, "src_cloud_router: router-src-a") || !strings.Contains(content, "dst_cloud_router: router-a") {
+	if !strings.Contains(content, "cloud_router: router-src-a") || !strings.Contains(content, "cloud_router: router-a") {
 		t.Fatalf("expected dedicated vpn router nodes, got %s", content)
 	}
-	if countSubstring(content, "src_project: src-a") != 1 {
-		t.Fatalf("expected one shared src-a project node, got %d in %s", countSubstring(content, "src_project: src-a"), content)
+	if countSubstring(content, "project: src-a") != 1 {
+		t.Fatalf("expected one shared source project node, got %d in %s", countSubstring(content, "project: src-a"), content)
 	}
-	if countSubstring(content, "src_region: us-central1") != 1 {
-		t.Fatalf("expected one shared src region node for src-a/us-central1, got %d in %s", countSubstring(content, "src_region: us-central1"), content)
+	if countSubstring(content, "region: us-central1<br>vpc: src-vpc-a") != 1 {
+		t.Fatalf("expected one shared source region node for src-a/us-central1/src-vpc-a, got %d in %s", countSubstring(content, "region: us-central1<br>vpc: src-vpc-a"), content)
 	}
-	if countSubstring(content, "dst_project: dst-a") != 2 {
-		t.Fatalf("expected one dst-a project node per src tunnel pair, got %d in %s", countSubstring(content, "dst_project: dst-a"), content)
+	if countSubstring(content, "project: dst-a") != 2 {
+		t.Fatalf("expected one destination project node per source tunnel pair, got %d in %s", countSubstring(content, "project: dst-a"), content)
 	}
-	if countSubstring(content, "dst_region: us-central1") != 2 {
-		t.Fatalf("expected one dst region node per src tunnel pair for dst-a/us-central1, got %d in %s", countSubstring(content, "dst_region: us-central1"), content)
+	if countSubstring(content, "region: us-central1<br>vpc: dst-vpc-a") != 2 {
+		t.Fatalf("expected one destination region node per source tunnel pair for dst-a/us-central1/dst-vpc-a, got %d in %s", countSubstring(content, "region: us-central1<br>vpc: dst-vpc-a"), content)
 	}
 	if !strings.Contains(content, "bgp_peering_status: UP") {
 		t.Fatalf("expected dedicated bgp status node in vpn mermaid output, got %s", content)
 	}
+	if strings.Index(content, "vpn_tunnel: tunnel-a-1") > strings.Index(content, "cloud_router: router-src-a") {
+		t.Fatalf("expected source tunnel to appear before source router in vpn mermaid output, got %s", content)
+	}
+	if strings.Index(content, "bgp_peering_status: UP") > strings.Index(content, "cloud_router: router-a") || strings.Index(content, "cloud_router: router-a") > strings.Index(content, "vpn_tunnel: tunnel-peer-1") {
+		t.Fatalf("expected bgp status to connect source and destination routers, with destination tunnel after destination router, got %s", content)
+	}
 	if strings.Contains(content, "mapped:") || strings.Contains(content, "remote_bgp_peer") {
 		t.Fatalf("unexpected remote peer fields in vpn mermaid output: %s", content)
 	}
-	if strings.Contains(content, "src_interconnect:") {
+	if strings.Contains(content, "src_interconnect:") || strings.Contains(content, "src_vpn_gateway:") || strings.Contains(content, "dst_vpn_gateway:") || strings.Contains(content, "src_cloud_router:") || strings.Contains(content, "dst_cloud_router:") || strings.Contains(content, "src_vpn_tunnel:") || strings.Contains(content, "dst_vpn_tunnel:") || strings.Contains(content, "src_region:") || strings.Contains(content, "dst_region:") {
 		t.Fatalf("unexpected interconnect nodes in vpn mermaid output: %s", content)
 	}
 }
@@ -682,6 +715,7 @@ func TestRenderVPNMermaidKeepsSameRegionLabelsSeparateAcrossDifferentProjects(t 
 				Workload:                  "native",
 				Environment:               "dev",
 				SrcProject:                "src-a",
+				SrcVPC:                    "src-vpc-a",
 				SrcRegion:                 "us-central1",
 				SrcVPNGateway:             "ha-a",
 				SrcVPNGatewayType:         "ha",
@@ -694,6 +728,7 @@ func TestRenderVPNMermaidKeepsSameRegionLabelsSeparateAcrossDifferentProjects(t 
 				Mapped:                    true,
 				DstProject:                "dst-a",
 				DstRegion:                 "us-central1",
+				DstVPC:                    "dst-vpc-a",
 				DstVPNGateway:             "dst-ha-a",
 				DstVPNGatewayType:         "ha",
 				DstVPNTunnel:              "dst-tunnel-a",
@@ -709,6 +744,7 @@ func TestRenderVPNMermaidKeepsSameRegionLabelsSeparateAcrossDifferentProjects(t 
 				Workload:                  "platform",
 				Environment:               "dev",
 				SrcProject:                "src-b",
+				SrcVPC:                    "src-vpc-b",
 				SrcRegion:                 "us-central1",
 				SrcVPNGateway:             "ha-b",
 				SrcVPNGatewayType:         "ha",
@@ -721,6 +757,7 @@ func TestRenderVPNMermaidKeepsSameRegionLabelsSeparateAcrossDifferentProjects(t 
 				Mapped:                    true,
 				DstProject:                "dst-b",
 				DstRegion:                 "us-central1",
+				DstVPC:                    "dst-vpc-b",
 				DstVPNGateway:             "dst-ha-b",
 				DstVPNGatewayType:         "ha",
 				DstVPNTunnel:              "dst-tunnel-b",
@@ -740,11 +777,11 @@ func TestRenderVPNMermaidKeepsSameRegionLabelsSeparateAcrossDifferentProjects(t 
 	}
 
 	content := string(data)
-	if countSubstring(content, "src_region: us-central1") != 2 {
-		t.Fatalf("expected separate src region nodes per src project, got %d in %s", countSubstring(content, "src_region: us-central1"), content)
+	if countSubstring(content, "region: us-central1<br>vpc: src-vpc-") != 2 {
+		t.Fatalf("expected separate source region nodes per src project/vpc, got %d in %s", countSubstring(content, "region: us-central1<br>vpc: src-vpc-"), content)
 	}
-	if countSubstring(content, "dst_region: us-central1") != 2 {
-		t.Fatalf("expected separate dst region nodes per dst project, got %d in %s", countSubstring(content, "dst_region: us-central1"), content)
+	if countSubstring(content, "region: us-central1<br>vpc: dst-vpc-") != 2 {
+		t.Fatalf("expected separate destination region nodes per dst project/vpc, got %d in %s", countSubstring(content, "region: us-central1<br>vpc: dst-vpc-"), content)
 	}
 }
 
@@ -760,6 +797,7 @@ func TestRenderVPNMermaidKeepsDestinationBranchScopedPerSourceTunnel(t *testing.
 				Workload:                  "native",
 				Environment:               "dev",
 				SrcProject:                "src-a",
+				SrcVPC:                    "src-vpc-a",
 				SrcRegion:                 "us-central1",
 				SrcVPNGateway:             "ha-a",
 				SrcVPNGatewayType:         "ha",
@@ -773,6 +811,7 @@ func TestRenderVPNMermaidKeepsDestinationBranchScopedPerSourceTunnel(t *testing.
 				BGPPeeringStatus:          "UP",
 				DstProject:                "dst-a",
 				DstRegion:                 "us-central1",
+				DstVPC:                    "dst-vpc-a",
 				DstVPNGateway:             "ha-peer",
 				DstVPNGatewayType:         "ha",
 				DstVPNTunnel:              "tunnel-peer-shared",
@@ -787,6 +826,7 @@ func TestRenderVPNMermaidKeepsDestinationBranchScopedPerSourceTunnel(t *testing.
 				Workload:                  "native",
 				Environment:               "dev",
 				SrcProject:                "src-a",
+				SrcVPC:                    "src-vpc-a",
 				SrcRegion:                 "us-central1",
 				SrcVPNGateway:             "ha-a",
 				SrcVPNGatewayType:         "ha",
@@ -800,6 +840,7 @@ func TestRenderVPNMermaidKeepsDestinationBranchScopedPerSourceTunnel(t *testing.
 				BGPPeeringStatus:          "UP",
 				DstProject:                "dst-a",
 				DstRegion:                 "us-central1",
+				DstVPC:                    "dst-vpc-a",
 				DstVPNGateway:             "ha-peer",
 				DstVPNGatewayType:         "ha",
 				DstVPNTunnel:              "tunnel-peer-shared",
@@ -818,17 +859,116 @@ func TestRenderVPNMermaidKeepsDestinationBranchScopedPerSourceTunnel(t *testing.
 	}
 
 	content := string(data)
-	if countSubstring(content, "src_vpn_tunnel: tunnel-a-1") != 1 || countSubstring(content, "src_vpn_tunnel: tunnel-a-2") != 1 {
+	if countSubstring(content, "vpn_tunnel: tunnel-a-1") != 1 || countSubstring(content, "vpn_tunnel: tunnel-a-2") != 1 {
 		t.Fatalf("expected both source tunnel nodes, got %s", content)
 	}
-	if countSubstring(content, "dst_vpn_tunnel: tunnel-peer-shared") != 2 {
-		t.Fatalf("expected one destination tunnel node per source tunnel pair, got %d in %s", countSubstring(content, "dst_vpn_tunnel: tunnel-peer-shared"), content)
+	if countSubstring(content, "vpn_tunnel: tunnel-peer-shared") != 2 {
+		t.Fatalf("expected one destination tunnel node per source tunnel pair, got %d in %s", countSubstring(content, "vpn_tunnel: tunnel-peer-shared"), content)
 	}
-	if countSubstring(content, "dst_cloud_router: router-dst") != 2 {
-		t.Fatalf("expected destination router nodes to stay pair-scoped, got %d in %s", countSubstring(content, "dst_cloud_router: router-dst"), content)
+	if countSubstring(content, "cloud_router: router-dst") != 2 {
+		t.Fatalf("expected destination router nodes to stay pair-scoped, got %d in %s", countSubstring(content, "cloud_router: router-dst"), content)
 	}
-	if countSubstring(content, "dst_vpn_gateway: ha-peer") != 2 {
-		t.Fatalf("expected destination gateway nodes to stay pair-scoped, got %d in %s", countSubstring(content, "dst_vpn_gateway: ha-peer"), content)
+	if countSubstring(content, "vpn_gateway: ha-peer") != 2 {
+		t.Fatalf("expected destination gateway nodes to stay pair-scoped, got %d in %s", countSubstring(content, "vpn_gateway: ha-peer"), content)
+	}
+}
+
+func TestRenderVPNMermaidCollapsesIdenticalDestinationGatewayRegionProjectWithinSourceBranch(t *testing.T) {
+	report := model.Report{
+		Type: "vpn",
+		Selectors: model.Selectors{
+			Org: "dbc",
+		},
+		Items: []model.MappingItem{
+			{
+				Org:                       "dbc",
+				Workload:                  "native",
+				Environment:               "dev",
+				SrcProject:                "src-a",
+				SrcVPC:                    "src-vpc-a",
+				SrcRegion:                 "us-central1",
+				SrcVPNGateway:             "ha-a",
+				SrcVPNGatewayType:         "ha",
+				SrcVPNTunnel:              "tunnel-a-1",
+				SrcVPNGatewayInterface:    "0",
+				SrcVPNGatewayIP:           "34.0.0.1",
+				SrcVPNTunnelStatus:        "ESTABLISHED",
+				SrcCloudRouter:            "router-src-a",
+				SrcCloudRouterASN:         "64510",
+				SrcCloudRouterInterface:   "if-src-a-1",
+				SrcCloudRouterInterfaceIP: "169.254.1.1",
+				Mapped:                    true,
+				BGPPeeringStatus:          "UP",
+				DstProject:                "dst-a",
+				DstRegion:                 "us-central1",
+				DstVPC:                    "dst-vpc-a",
+				DstVPNGateway:             "ha-peer",
+				DstVPNGatewayType:         "ha",
+				DstCloudRouter:            "router-dst",
+				DstCloudRouterASN:         "64520",
+				DstCloudRouterInterface:   "if-dst-shared",
+				DstCloudRouterInterfaceIP: "169.254.2.1",
+				DstVPNTunnel:              "tunnel-peer-1",
+				DstVPNGatewayInterface:    "0",
+				DstVPNGatewayIP:           "35.0.0.1",
+				DstVPNTunnelStatus:        "ESTABLISHED",
+			},
+			{
+				Org:                       "dbc",
+				Workload:                  "native",
+				Environment:               "dev",
+				SrcProject:                "src-a",
+				SrcVPC:                    "src-vpc-a",
+				SrcRegion:                 "us-central1",
+				SrcVPNGateway:             "ha-a",
+				SrcVPNGatewayType:         "ha",
+				SrcVPNTunnel:              "tunnel-a-1",
+				SrcVPNGatewayInterface:    "0",
+				SrcVPNGatewayIP:           "34.0.0.1",
+				SrcVPNTunnelStatus:        "ESTABLISHED",
+				SrcCloudRouter:            "router-src-a",
+				SrcCloudRouterASN:         "64510",
+				SrcCloudRouterInterface:   "if-src-a-1",
+				SrcCloudRouterInterfaceIP: "169.254.1.1",
+				Mapped:                    true,
+				BGPPeeringStatus:          "UP",
+				DstProject:                "dst-a",
+				DstRegion:                 "us-central1",
+				DstVPC:                    "dst-vpc-a",
+				DstVPNGateway:             "ha-peer",
+				DstVPNGatewayType:         "ha",
+				DstCloudRouter:            "router-dst",
+				DstCloudRouterASN:         "64520",
+				DstCloudRouterInterface:   "if-dst-shared",
+				DstCloudRouterInterfaceIP: "169.254.2.1",
+				DstVPNTunnel:              "tunnel-peer-2",
+				DstVPNGatewayInterface:    "1",
+				DstVPNGatewayIP:           "35.0.0.2",
+				DstVPNTunnelStatus:        "ESTABLISHED",
+			},
+		},
+	}
+
+	data, _, err := Render(report, FormatMermaid)
+	if err != nil {
+		t.Fatalf("render vpn mermaid: %v", err)
+	}
+
+	content := string(data)
+	if countSubstring(content, "cloud_router: router-dst") != 1 {
+		t.Fatalf("expected one destination router node within the same source branch, got %d in %s", countSubstring(content, "cloud_router: router-dst"), content)
+	}
+	if countSubstring(content, "vpn_tunnel: tunnel-peer-1") != 1 || countSubstring(content, "vpn_tunnel: tunnel-peer-2") != 1 {
+		t.Fatalf("expected separate destination tunnel nodes within the source branch, got %s", content)
+	}
+	if countSubstring(content, "vpn_gateway: ha-peer") != 1 {
+		t.Fatalf("expected one shared destination gateway node within the source branch, got %d in %s", countSubstring(content, "vpn_gateway: ha-peer"), content)
+	}
+	if countSubstring(content, "region: us-central1<br>vpc: dst-vpc-a") != 1 {
+		t.Fatalf("expected one shared destination region/vpc node within the source branch, got %d in %s", countSubstring(content, "region: us-central1<br>vpc: dst-vpc-a"), content)
+	}
+	if countSubstring(content, "project: dst-a") != 1 {
+		t.Fatalf("expected one shared destination project node within the source branch, got %d in %s", countSubstring(content, "project: dst-a"), content)
 	}
 }
 

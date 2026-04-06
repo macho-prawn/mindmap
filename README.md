@@ -161,8 +161,8 @@ Lists source HA and Classic VPN gateways and connected VPN tunnels.
 Uses HA tunnel peer gateway references to discover destination GCP projects, VPN gateways, tunnels, and Cloud Routers.
 Includes Classic VPN gateways and tunnels as source-side unmapped output when no peer GCP project can be discovered.
 Uses a VPN-specific hierarchy across JSON, tree, Mermaid, and HTML output:
-  org -> workload -> environment -> src_project -> src_region -> src_vpn_gateway -> src_cloud_router -> src_tunnel -> bgp_peering_status -> dst_tunnel -> dst_cloud_router -> dst_vpn_gateway -> dst_region -> dst_project
-Uses a VPN-specific Mermaid grouping strategy that shares src_project -> src_region and dst_project -> dst_region pairs as separate nodes.
+  org -> workload -> environment -> src_project -> src_region -> src_vpn_gateway -> src_tunnel -> src_cloud_router -> bgp_peering_status -> dst_cloud_router -> dst_tunnel -> dst_vpn_gateway -> dst_region -> dst_project
+Uses a VPN-specific Mermaid grouping strategy that shares repeated `src_project -> src_region[src_vpc]` nodes and collapses identical destination gateway/region/project paths within the same source-tunnel branch.
 Uses the same csv, tsv, json, tree, mermaid, and html output formats as interconnect reports.
 ```
 
@@ -176,6 +176,8 @@ Uses the same csv, tsv, json, tree, mermaid, and html output formats as intercon
 | Selector naming | n/a | `-o/-w/-e`: `<workload>-<env>`; `-o` only: `all`; `-o/-w`: `<workload>-all`; `-o/-e`: `all-<env>` |
 
 `-f html` writes a self-contained offline Mermaid viewer page that can be opened directly in a browser.
+
+Structured `json`, `tree`, `mermaid`, and `html` outputs use branch-scoped unprefixed field names in visible labels and JSON leaf keys. Flat `csv` and `tsv` outputs remain canonical and keep `src_` / `dst_` prefixes.
 
 On success, the CLI prints a merged final summary row containing:
 
@@ -205,15 +207,15 @@ org,workload,environment,src_project,src_region,src_vpn_gateway,src_vpn_gateway_
 - Source dedicated interconnects are modeled as global resources
 - Source dedicated interconnect MACsec status and key name are emitted in the canonical source field block when available
 - Destination VLAN attachments and Cloud Routers are modeled as regional resources
-- Destination VPC is derived from the destination VLAN attachment network and emitted as `dst_vpc`
+- Destination VPC is derived from the destination VLAN attachment network and emitted as `dst_vpc` in flat output and `vpc` in structured output
 - Destination Cloud Router ASN is emitted in the canonical destination router field block when available
 - Remote BGP peer ASN is emitted only in interconnect output
 - Unmapped source interconnects are still included in the output
 - Unmapped source Classic VPN gateways and tunnels are also included in the output when peer GCP project discovery is unavailable
 - Mermaid output is a shared-node DAG and may intentionally collapse matching labels across workload, environment, source-project, interconnect, and destination-region layers
-- VPN Mermaid output uses a separate node-key strategy that collapses repeated `src_project -> src_region` and `dst_project -> dst_region` pairs while keeping project and region as separate nodes
-- In Mermaid, shared VPCs are folded into the region node; mixed VPCs are rendered as separate `dst_vpc` nodes between region and attachment
-- VPN Mermaid renders `bgp_peering_status` as its own node between `src_vpn_tunnel` and `dst_vpn_tunnel`
+- VPN Mermaid output uses a separate node-key strategy that collapses repeated `src_project -> src_region[src_vpc]` pairs and reuses identical destination gateway/region/project nodes within the same source-tunnel branch
+- In structured VPN output, source and destination region nodes render as `region [vpc: ...]`
+- VPN Mermaid renders `bgp_peering_status` as its own node between source and destination `cloud_router` nodes
 - Mermaid labels use `<br>` line breaks so they render correctly in Mermaid-compatible viewers, including the offline HTML output
 - Runtime discovery is performed with Google Compute API clients, not the `gcloud` CLI
 

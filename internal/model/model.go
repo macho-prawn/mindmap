@@ -90,6 +90,7 @@ type MappingItem struct {
 	Workload                  string `json:"workload"`
 	Environment               string `json:"environment"`
 	SrcProject                string `json:"src_project"`
+	SrcVPC                    string `json:"src_vpc"`
 	SrcInterconnect           string `json:"src_interconnect"`
 	SrcVPNGateway             string `json:"src_vpn_gateway"`
 	SrcVPNGatewayType         string `json:"src_vpn_gateway_type"`
