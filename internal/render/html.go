@@ -87,7 +87,7 @@ func renderHTML(report model.Report) ([]byte, error) {
 	b.WriteString("      status.style.display = 'block';\n")
 	b.WriteString("      status.textContent = 'Mermaid runtime failed to load.';\n")
 	b.WriteString("    } else {\n")
-	b.WriteString("      mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', flowchart: { htmlLabels: true, useMaxWidth: false } });\n")
+		b.WriteString("      mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', maxTextSize: 150000, flowchart: { htmlLabels: true, useMaxWidth: false } });\n")
 	b.WriteString("      Promise.resolve(mermaid.run({ nodes: [diagram] })).catch((error) => {\n")
 	b.WriteString("        status.style.display = 'block';\n")
 	b.WriteString("        status.textContent = 'Failed to render Mermaid diagram: ' + (error && error.message ? error.message : String(error));\n")
