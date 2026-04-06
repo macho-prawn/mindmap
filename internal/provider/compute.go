@@ -166,7 +166,7 @@ func (p *ComputeProvider) ListVPNTunnels(ctx context.Context, project string) ([
 					PeerGCPGateway:      tunnel.PeerGcpGateway,
 					PeerExternalGateway: tunnel.PeerExternalGateway,
 					PeerIP:              tunnel.PeerIp,
-					VPNGatewayInterface: formatOptionalInt(tunnel.VpnGatewayInterface),
+					VPNGatewayInterface: formatVPNGatewayInterface(tunnel.VpnGatewayInterface),
 				})
 			}
 		}
@@ -280,6 +280,13 @@ func formatOptionalInt(value int64) string {
 	return strconv.FormatInt(value, 10)
 }
 
+func formatVPNGatewayInterface(value int64) string {
+	if value < 0 {
+		return ""
+	}
+	return strconv.FormatInt(value, 10)
+}
+
 func haVPNGatewayInterfaceIPs(gateway *compute.VpnGateway) map[string]string {
 	if gateway == nil || len(gateway.VpnInterfaces) == 0 {
 		return nil
@@ -289,7 +296,7 @@ func haVPNGatewayInterfaceIPs(gateway *compute.VpnGateway) map[string]string {
 		if iface == nil {
 			continue
 		}
-		id := formatOptionalInt(iface.Id)
+		id := formatVPNGatewayInterface(iface.Id)
 		ip := firstNonEmpty(strings.TrimSpace(iface.IpAddress), strings.TrimSpace(iface.Ipv6Address))
 		if id == "" || ip == "" {
 			continue
