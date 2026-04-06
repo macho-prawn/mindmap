@@ -415,6 +415,18 @@ func TestRenderHTML(t *testing.T) {
 	if !strings.Contains(content, "<!DOCTYPE html>") {
 		t.Fatalf("expected html doctype, got %s", content)
 	}
+	if !strings.Contains(content, "<title>netmap interconnect dbc All All</title>") {
+		t.Fatalf("expected selector-based html title, got %s", content)
+	}
+	if !strings.Contains(content, `class="summary-label">Type`) || !strings.Contains(content, `class="summary-label">Org`) || !strings.Contains(content, `class="summary-label">Environment`) || !strings.Contains(content, `class="summary-label">Workload`) {
+		t.Fatalf("expected selector summary headings in html output, got %s", content)
+	}
+	if !strings.Contains(content, `class="summary-value">interconnect`) || !strings.Contains(content, `class="summary-value">dbc`) || !strings.Contains(content, `class="summary-value">All`) {
+		t.Fatalf("expected selector summary values with All fallback in html output, got %s", content)
+	}
+	if strings.Contains(content, "netmap interconnect: src to") {
+		t.Fatalf("expected old source-to-target html title to be removed, got %s", content)
+	}
 	if !strings.Contains(content, "flowchart LR") || !strings.Contains(content, "remote_bgp_peer: peer-1") {
 		t.Fatalf("expected embedded mermaid graph source, got %s", content)
 	}
@@ -426,6 +438,31 @@ func TestRenderHTML(t *testing.T) {
 	}
 	if strings.Contains(content, "cdn.jsdelivr.net") || strings.Contains(content, "https://mermaid.live") {
 		t.Fatalf("expected offline html without external mermaid references, got %s", content)
+	}
+}
+
+func TestRenderHTMLUsesExactSelectorValuesWhenProvided(t *testing.T) {
+	report := sampleVPNReport()
+	report.Selectors = model.Selectors{
+		Org:         "dbc",
+		Workload:    "native",
+		Environment: "dev",
+	}
+
+	data, _, err := Render(report, FormatHTML)
+	if err != nil {
+		t.Fatalf("render html: %v", err)
+	}
+
+	content := string(data)
+	if !strings.Contains(content, "<title>netmap vpn dbc dev native</title>") {
+		t.Fatalf("expected exact selector values in html title, got %s", content)
+	}
+	if !strings.Contains(content, `class="summary-value">vpn`) || !strings.Contains(content, `class="summary-value">dbc`) || !strings.Contains(content, `class="summary-value">dev`) || !strings.Contains(content, `class="summary-value">native`) {
+		t.Fatalf("expected exact selector values in html summary, got %s", content)
+	}
+	if strings.Contains(content, `class="summary-value">All`) {
+		t.Fatalf("did not expect All fallback for exact selector values, got %s", content)
 	}
 }
 
