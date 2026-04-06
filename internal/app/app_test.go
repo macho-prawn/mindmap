@@ -713,6 +713,9 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 	if len(projectItems) == 0 {
 		t.Fatalf("expected vpn project items to be built")
 	}
+	if projectItems[0].SrcCloudRouter != "router-src" || projectItems[0].SrcCloudRouterInterface != "if-src" || projectItems[0].SrcCloudRouterInterfaceIP != "169.254.1.1/30" {
+		t.Fatalf("expected source router fields in vpn project item, got %+v", projectItems[0])
+	}
 
 	err = app.Run(context.Background(), []string{
 		"-t", "vpn",
@@ -732,11 +735,17 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 	if !strings.Contains(content, "src_vpn_gateway: ha-src") || !strings.Contains(content, "src_vpn_tunnel: tunnel-src") {
 		t.Fatalf("expected vpn source nodes in mermaid output, got: %s", content)
 	}
+	if !strings.Contains(content, "src_cloud_router: router-src") {
+		t.Fatalf("expected vpn source router node in mermaid output, got: %s", content)
+	}
 	if !strings.Contains(content, "dst_vpn_gateway: ha-dst") || !strings.Contains(content, "dst_vpn_tunnel: tunnel-dst") {
 		t.Fatalf("expected vpn destination nodes in mermaid output, got: %s", content)
 	}
-	if !strings.Contains(content, "dst_cloud_router: router-dst") || !strings.Contains(content, "remote_bgp_peer: peer-dst") {
-		t.Fatalf("expected destination router and peer details in mermaid output, got: %s", content)
+	if !strings.Contains(content, "dst_cloud_router: router-dst") || !strings.Contains(content, "bgp_peering_status: UP") {
+		t.Fatalf("expected destination router and bgp status details in mermaid output, got: %s", content)
+	}
+	if strings.Contains(content, "remote_bgp_peer:") {
+		t.Fatalf("unexpected remote peer fields in vpn mermaid output, got: %s", content)
 	}
 	if strings.Contains(content, "src_interconnect:") {
 		t.Fatalf("unexpected interconnect node in vpn mermaid output: %s", content)
@@ -807,6 +816,9 @@ func TestBuildVPNProjectItemsIncludesClassicUnmappedTunnel(t *testing.T) {
 	}
 	if item.SrcVPNGateway != "classic-src" || item.SrcVPNGatewayType != "classic" || item.SrcVPNTunnel != "classic-tunnel" {
 		t.Fatalf("expected classic vpn source fields, got %+v", item)
+	}
+	if item.SrcCloudRouter != "router-src" || item.SrcCloudRouterInterface != "if-src" {
+		t.Fatalf("expected classic vpn source router fields, got %+v", item)
 	}
 	if item.DstProject != "" || item.DstVPNGateway != "" || item.DstVPNTunnel != "" {
 		t.Fatalf("expected no destination mapping for classic vpn item, got %+v", item)
@@ -983,7 +995,7 @@ func TestRunWithDuplicateProjectFanoutCachesDiscoveryAndLogsEachTuple(t *testing
 	if count := strings.Count(data, "dbc,platform,dev,src-project"); count != 1 {
 		t.Fatalf("expected one platform/dev csv branch, got %d in %s", count, data)
 	}
-	if !strings.Contains(data, ",,,,,true,global,ACTIVE,true,shared-key,shared-project,us-central1,shared-vpc,attachment-shared,ACTIVE,,,,,,,router-shared,64540,if-shared,169.254.30.1,peer-shared,169.254.30.2,64560,UP") {
+	if !strings.Contains(data, "src-project,ic-1,true,global,ACTIVE,true,shared-key,shared-project,us-central1,shared-vpc,attachment-shared,ACTIVE,,router-shared,64540,if-shared,169.254.30.1,peer-shared,169.254.30.2,64560,UP") {
 		t.Fatalf("expected source macsec fields in csv output, got %s", data)
 	}
 }

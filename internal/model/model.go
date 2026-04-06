@@ -92,7 +92,10 @@ type MappingItem struct {
 	SrcInterconnect           string `json:"src_interconnect"`
 	SrcVPNGateway             string `json:"src_vpn_gateway"`
 	SrcVPNGatewayType         string `json:"src_vpn_gateway_type"`
-	SrcVPNGatewayStatus       string `json:"src_vpn_gateway_status"`
+	SrcCloudRouter            string `json:"src_cloud_router"`
+	SrcCloudRouterASN         string `json:"src_cloud_router_asn"`
+	SrcCloudRouterInterface   string `json:"src_cloud_router_interface"`
+	SrcCloudRouterInterfaceIP string `json:"src_cloud_router_interface_ip"`
 	SrcVPNTunnel              string `json:"src_vpn_tunnel"`
 	SrcVPNTunnelStatus        string `json:"src_vpn_tunnel_status"`
 	Mapped                    bool   `json:"mapped"`
@@ -108,7 +111,6 @@ type MappingItem struct {
 	DstVLANAttachmentVLANID   string `json:"dst_vlan_attachment_vlanid"`
 	DstVPNGateway             string `json:"dst_vpn_gateway"`
 	DstVPNGatewayType         string `json:"dst_vpn_gateway_type"`
-	DstVPNGatewayStatus       string `json:"dst_vpn_gateway_status"`
 	DstVPNTunnel              string `json:"dst_vpn_tunnel"`
 	DstVPNTunnelStatus        string `json:"dst_vpn_tunnel_status"`
 	DstCloudRouter            string `json:"dst_cloud_router"`

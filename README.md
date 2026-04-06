@@ -160,6 +160,8 @@ Resolves selected config tuples as source projects.
 Lists source HA and Classic VPN gateways and connected VPN tunnels.
 Uses HA tunnel peer gateway references to discover destination GCP projects, VPN gateways, tunnels, and Cloud Routers.
 Includes Classic VPN gateways and tunnels as source-side unmapped output when no peer GCP project can be discovered.
+Uses a VPN-specific hierarchy across JSON, tree, Mermaid, and HTML output:
+  org -> workload -> environment -> src_project -> src_region -> src_vpn_gateway -> src_cloud_router -> src_tunnel -> bgp_peering_status -> dst_tunnel -> dst_cloud_router -> dst_vpn_gateway -> dst_region -> dst_project
 Uses a VPN-specific Mermaid grouping strategy that shares src_project -> src_region and dst_project -> dst_region pairs as separate nodes.
 Uses the same csv, tsv, json, tree, mermaid, and html output formats as interconnect reports.
 ```
@@ -186,8 +188,16 @@ Use that path directly when opening or sharing the generated file.
 
 ### CSV/TSV columns
 
+#### Interconnect
+
 ```text
-org,workload,environment,src_project,src_interconnect,src_vpn_gateway,src_vpn_gateway_type,src_vpn_gateway_status,src_vpn_tunnel,src_vpn_tunnel_status,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vpc,dst_vlan_attachment,dst_vlan_attachment_state,dst_vlan_attachment_vlanid,dst_vpn_gateway,dst_vpn_gateway_type,dst_vpn_gateway_status,dst_vpn_tunnel,dst_vpn_tunnel_status,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,remote_bgp_peer_asn,bgp_peering_status
+org,workload,environment,src_project,src_interconnect,mapped,src_region,src_state,src_macsec_enabled,src_macsec_keyname,dst_project,dst_region,dst_vpc,dst_vlan_attachment,dst_vlan_attachment_state,dst_vlan_attachment_vlanid,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,remote_bgp_peer,remote_bgp_peer_ip,remote_bgp_peer_asn,bgp_peering_status
+```
+
+#### VPN
+
+```text
+org,workload,environment,src_project,src_region,src_vpn_gateway,src_vpn_gateway_type,src_cloud_router,src_cloud_router_asn,src_cloud_router_interface,src_cloud_router_interface_ip,src_vpn_tunnel,src_vpn_tunnel_status,mapped,bgp_peering_status,dst_vpn_tunnel,dst_vpn_tunnel_status,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,dst_vpn_gateway,dst_vpn_gateway_type,dst_region,dst_project
 ```
 
 ## Notes
@@ -197,13 +207,13 @@ org,workload,environment,src_project,src_interconnect,src_vpn_gateway,src_vpn_ga
 - Destination VLAN attachments and Cloud Routers are modeled as regional resources
 - Destination VPC is derived from the destination VLAN attachment network and emitted as `dst_vpc`
 - Destination Cloud Router ASN is emitted in the canonical destination router field block when available
-- Remote BGP peer ASN is emitted in the canonical peer field block when available
+- Remote BGP peer ASN is emitted only in interconnect output
 - Unmapped source interconnects are still included in the output
 - Unmapped source Classic VPN gateways and tunnels are also included in the output when peer GCP project discovery is unavailable
 - Mermaid output is a shared-node DAG and may intentionally collapse matching labels across workload, environment, source-project, interconnect, and destination-region layers
 - VPN Mermaid output uses a separate node-key strategy that collapses repeated `src_project -> src_region` and `dst_project -> dst_region` pairs while keeping project and region as separate nodes
 - In Mermaid, shared VPCs are folded into the region node; mixed VPCs are rendered as separate `dst_vpc` nodes between region and attachment
-- Mermaid renders `bgp_peering_status` as its own node between the interface and remote peer nodes
+- VPN Mermaid renders `bgp_peering_status` as its own node between `src_vpn_tunnel` and `dst_vpn_tunnel`
 - Mermaid labels use `<br>` line breaks so they render correctly in Mermaid-compatible viewers, including the offline HTML output
 - Runtime discovery is performed with Google Compute API clients, not the `gcloud` CLI
 
