@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,8 @@ import (
 
 	"netmap/internal/model"
 	"netmap/internal/provider"
+
+	"google.golang.org/api/googleapi"
 )
 
 type stubDiscoveryProvider struct{}
@@ -40,6 +44,48 @@ func (stubDiscoveryProvider) ListCloudRouters(context.Context, string) ([]model.
 
 func (stubDiscoveryProvider) GetCloudRouterStatus(context.Context, string, string, string) (model.RouterStatus, error) {
 	return model.RouterStatus{}, nil
+}
+
+type errorDiscoveryProvider struct {
+	interconnectErr error
+	vpnGatewayErr   error
+}
+
+func (p errorDiscoveryProvider) ListDedicatedInterconnects(context.Context, string) ([]model.DedicatedInterconnect, error) {
+	return nil, p.interconnectErr
+}
+
+func (errorDiscoveryProvider) ListVLANAttachments(context.Context, string) ([]model.VLANAttachment, error) {
+	return nil, nil
+}
+
+func (p errorDiscoveryProvider) ListVPNGateways(context.Context, string) ([]model.VPNGateway, error) {
+	return nil, p.vpnGatewayErr
+}
+
+func (errorDiscoveryProvider) ListTargetVPNGateways(context.Context, string) ([]model.VPNGateway, error) {
+	return nil, nil
+}
+
+func (errorDiscoveryProvider) ListVPNTunnels(context.Context, string) ([]model.VPNTunnel, error) {
+	return nil, nil
+}
+
+func (errorDiscoveryProvider) ListCloudRouters(context.Context, string) ([]model.CloudRouter, error) {
+	return nil, nil
+}
+
+func (errorDiscoveryProvider) GetCloudRouterStatus(context.Context, string, string, string) (model.RouterStatus, error) {
+	return model.RouterStatus{}, nil
+}
+
+func writeTempConfig(t *testing.T, contents string) string {
+	t.Helper()
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte(contents), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	return configPath
 }
 
 func TestRunVersionCommand(t *testing.T) {
@@ -275,5 +321,186 @@ func TestRunValidConfigCreatesProviderAfterPreflight(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "no dedicated interconnects found in source project") {
 		t.Fatalf("expected post-provider execution error, got %q", stderr.String())
+	}
+}
+
+func TestRunProviderCreationAuthErrorShowsCustomADCGuidance(t *testing.T) {
+	restoreProvider := newComputeProvider
+	newComputeProvider = func(context.Context) (provider.DiscoveryProvider, error) {
+		return nil, errors.New("create compute service: google: could not find default credentials")
+	}
+	t.Cleanup(func() {
+		newComputeProvider = restoreProvider
+	})
+
+	configPath := writeTempConfig(t, "org:\n  - name: dbc\n    workload:\n      - name: native\n        env:\n          - name: dev\n            project_id: project\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := run(context.Background(), []string{
+		"-t", "interconnect",
+		"-o", "dbc",
+		"-w", "native",
+		"-e", "dev",
+		"-p", "src-project",
+		"-c", configPath,
+	}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected error exit code, got %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), adcGuidanceLine) {
+		t.Fatalf("expected ADC guidance line, got %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), adcGuidanceCommand) {
+		t.Fatalf("expected ADC guidance command, got %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "Underlying error: create compute service: google: could not find default credentials") {
+		t.Fatalf("expected raw provider error, got %q", stderr.String())
+	}
+}
+
+func TestRunProviderCreationNonAuthErrorRemainsUnchanged(t *testing.T) {
+	restoreProvider := newComputeProvider
+	newComputeProvider = func(context.Context) (provider.DiscoveryProvider, error) {
+		return nil, errors.New("create compute service: boom")
+	}
+	t.Cleanup(func() {
+		newComputeProvider = restoreProvider
+	})
+
+	configPath := writeTempConfig(t, "org:\n  - name: dbc\n    workload:\n      - name: native\n        env:\n          - name: dev\n            project_id: project\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := run(context.Background(), []string{
+		"-t", "interconnect",
+		"-o", "dbc",
+		"-w", "native",
+		"-e", "dev",
+		"-p", "src-project",
+		"-c", configPath,
+	}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected error exit code, got %d", exitCode)
+	}
+	if strings.Contains(stderr.String(), adcGuidanceLine) {
+		t.Fatalf("expected non-auth provider error to remain unchanged, got %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "create compute service: boom") {
+		t.Fatalf("expected raw non-auth provider error, got %q", stderr.String())
+	}
+}
+
+func TestRunInterconnectRuntimeAuthErrorShowsCustomADCGuidance(t *testing.T) {
+	restoreProvider := newComputeProvider
+	newComputeProvider = func(context.Context) (provider.DiscoveryProvider, error) {
+		return errorDiscoveryProvider{
+			interconnectErr: fmt.Errorf(
+				"list dedicated interconnects for source project %q: %w",
+				"src-project",
+				&googleapi.Error{Code: 401, Message: "Request had invalid authentication credentials."},
+			),
+		}, nil
+	}
+	t.Cleanup(func() {
+		newComputeProvider = restoreProvider
+	})
+
+	configPath := writeTempConfig(t, "org:\n  - name: dbc\n    workload:\n      - name: native\n        env:\n          - name: dev\n            project_id: project\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := run(context.Background(), []string{
+		"-t", "interconnect",
+		"-o", "dbc",
+		"-w", "native",
+		"-e", "dev",
+		"-p", "src-project",
+		"-c", configPath,
+	}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected error exit code, got %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), adcGuidanceLine) || !strings.Contains(stderr.String(), adcGuidanceCommand) {
+		t.Fatalf("expected ADC guidance for runtime auth error, got %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "Underlying error: list dedicated interconnects for source project") {
+		t.Fatalf("expected wrapped runtime error, got %q", stderr.String())
+	}
+}
+
+func TestRunVPNRuntimeAuthErrorShowsCustomADCGuidance(t *testing.T) {
+	restoreProvider := newComputeProvider
+	newComputeProvider = func(context.Context) (provider.DiscoveryProvider, error) {
+		return errorDiscoveryProvider{
+			vpnGatewayErr: fmt.Errorf(
+				"list vpn gateways for source project %q: %w",
+				"project",
+				&googleapi.Error{Code: 401, Message: "Request had invalid authentication credentials."},
+			),
+		}, nil
+	}
+	t.Cleanup(func() {
+		newComputeProvider = restoreProvider
+	})
+
+	configPath := writeTempConfig(t, "org:\n  - name: dbc\n    workload:\n      - name: native\n        env:\n          - name: dev\n            project_id: project\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := run(context.Background(), []string{
+		"-t", "vpn",
+		"-o", "dbc",
+		"-w", "native",
+		"-e", "dev",
+		"-c", configPath,
+	}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected error exit code, got %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), adcGuidanceLine) || !strings.Contains(stderr.String(), adcGuidanceCommand) {
+		t.Fatalf("expected ADC guidance for vpn runtime auth error, got %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "Underlying error: list vpn gateways for source project") {
+		t.Fatalf("expected wrapped vpn runtime error, got %q", stderr.String())
+	}
+}
+
+func TestRunRuntimeNonAuthErrorRemainsUnchanged(t *testing.T) {
+	restoreProvider := newComputeProvider
+	newComputeProvider = func(context.Context) (provider.DiscoveryProvider, error) {
+		return errorDiscoveryProvider{
+			interconnectErr: errors.New("list dedicated interconnects for source project \"src-project\": boom"),
+		}, nil
+	}
+	t.Cleanup(func() {
+		newComputeProvider = restoreProvider
+	})
+
+	configPath := writeTempConfig(t, "org:\n  - name: dbc\n    workload:\n      - name: native\n        env:\n          - name: dev\n            project_id: project\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := run(context.Background(), []string{
+		"-t", "interconnect",
+		"-o", "dbc",
+		"-w", "native",
+		"-e", "dev",
+		"-p", "src-project",
+		"-c", configPath,
+	}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected error exit code, got %d", exitCode)
+	}
+	if strings.Contains(stderr.String(), adcGuidanceLine) {
+		t.Fatalf("expected non-auth runtime error to remain unchanged, got %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "list dedicated interconnects for source project \"src-project\": boom") {
+		t.Fatalf("expected raw non-auth runtime error, got %q", stderr.String())
 	}
 }
