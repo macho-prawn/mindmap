@@ -840,6 +840,12 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 	if !strings.Contains(content, "vpn_gateway_interface: 0") || !strings.Contains(content, "vpn_gateway_ip: 34.0.0.1") || !strings.Contains(content, "vpn_gateway_ip: 35.0.0.1") {
 		t.Fatalf("expected vpn gateway interface/ip fields in mermaid output, got: %s", content)
 	}
+	if !strings.Contains(content, "vpn_tunnel: tunnel-src<br>vpn_gateway_interface: 0<br>vpn_tunnel_status: ESTABLISHED") || !strings.Contains(content, "vpn_tunnel: tunnel-dst<br>vpn_gateway_interface: 0<br>vpn_tunnel_status: ESTABLISHED") {
+		t.Fatalf("expected vpn tunnel labels to keep gateway interface but omit gateway ip, got: %s", content)
+	}
+	if strings.Contains(content, "vpn_tunnel: tunnel-src<br>vpn_gateway_interface: 0<br>vpn_gateway_ip: 34.0.0.1") || strings.Contains(content, "vpn_tunnel: tunnel-dst<br>vpn_gateway_interface: 0<br>vpn_gateway_ip: 35.0.0.1") {
+		t.Fatalf("expected vpn tunnel labels to omit gateway ip, got: %s", content)
+	}
 	if !strings.Contains(content, "cloud_router: router-src") {
 		t.Fatalf("expected vpn source router node in mermaid output, got: %s", content)
 	}

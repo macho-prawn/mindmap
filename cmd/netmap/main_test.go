@@ -16,6 +16,10 @@ import (
 	"google.golang.org/api/googleapi"
 )
 
+func init() {
+	adcPreflight = func(context.Context) error { return nil }
+}
+
 type stubDiscoveryProvider struct{}
 
 func (stubDiscoveryProvider) ListDedicatedInterconnects(context.Context, string) ([]model.DedicatedInterconnect, error) {
@@ -86,6 +90,15 @@ func writeTempConfig(t *testing.T, contents string) string {
 		t.Fatalf("write config: %v", err)
 	}
 	return configPath
+}
+
+func stubADCPreflight(t *testing.T, fn func(context.Context) error) {
+	t.Helper()
+	restore := adcPreflight
+	adcPreflight = fn
+	t.Cleanup(func() {
+		adcPreflight = restore
+	})
 }
 
 func TestRunVersionCommand(t *testing.T) {
@@ -325,6 +338,7 @@ func TestRunValidConfigCreatesProviderAfterPreflight(t *testing.T) {
 }
 
 func TestRunProviderCreationAuthErrorShowsCustomADCGuidance(t *testing.T) {
+	stubADCPreflight(t, func(context.Context) error { return nil })
 	restoreProvider := newComputeProvider
 	newComputeProvider = func(context.Context) (provider.DiscoveryProvider, error) {
 		return nil, errors.New("create compute service: google: could not find default credentials")
@@ -361,6 +375,7 @@ func TestRunProviderCreationAuthErrorShowsCustomADCGuidance(t *testing.T) {
 }
 
 func TestRunProviderCreationNonAuthErrorRemainsUnchanged(t *testing.T) {
+	stubADCPreflight(t, func(context.Context) error { return nil })
 	restoreProvider := newComputeProvider
 	newComputeProvider = func(context.Context) (provider.DiscoveryProvider, error) {
 		return nil, errors.New("create compute service: boom")
@@ -394,6 +409,7 @@ func TestRunProviderCreationNonAuthErrorRemainsUnchanged(t *testing.T) {
 }
 
 func TestRunInterconnectRuntimeAuthErrorShowsCustomADCGuidance(t *testing.T) {
+	stubADCPreflight(t, func(context.Context) error { return nil })
 	restoreProvider := newComputeProvider
 	newComputeProvider = func(context.Context) (provider.DiscoveryProvider, error) {
 		return errorDiscoveryProvider{
@@ -433,6 +449,7 @@ func TestRunInterconnectRuntimeAuthErrorShowsCustomADCGuidance(t *testing.T) {
 }
 
 func TestRunVPNRuntimeAuthErrorShowsCustomADCGuidance(t *testing.T) {
+	stubADCPreflight(t, func(context.Context) error { return nil })
 	restoreProvider := newComputeProvider
 	newComputeProvider = func(context.Context) (provider.DiscoveryProvider, error) {
 		return errorDiscoveryProvider{
@@ -471,6 +488,7 @@ func TestRunVPNRuntimeAuthErrorShowsCustomADCGuidance(t *testing.T) {
 }
 
 func TestRunRuntimeNonAuthErrorRemainsUnchanged(t *testing.T) {
+	stubADCPreflight(t, func(context.Context) error { return nil })
 	restoreProvider := newComputeProvider
 	newComputeProvider = func(context.Context) (provider.DiscoveryProvider, error) {
 		return errorDiscoveryProvider{
@@ -502,5 +520,106 @@ func TestRunRuntimeNonAuthErrorRemainsUnchanged(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "list dedicated interconnects for source project \"src-project\": boom") {
 		t.Fatalf("expected raw non-auth runtime error, got %q", stderr.String())
+	}
+}
+
+func TestRunADCPreflightFailsBeforeConfigReadForInterconnect(t *testing.T) {
+	stubADCPreflight(t, func(context.Context) error {
+		return errors.New("google: could not find default credentials")
+	})
+	restoreProvider := newComputeProvider
+	newComputeProvider = func(context.Context) (provider.DiscoveryProvider, error) {
+		t.Fatal("provider should not be created when ADC preflight fails")
+		return nil, nil
+	}
+	t.Cleanup(func() {
+		newComputeProvider = restoreProvider
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := run(context.Background(), []string{
+		"-t", "interconnect",
+		"-o", "dbc",
+		"-w", "native",
+		"-e", "dev",
+		"-p", "src-project",
+		"-c", filepath.Join(t.TempDir(), "missing.yaml"),
+	}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected error exit code, got %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), adcGuidanceLine) || !strings.Contains(stderr.String(), adcGuidanceCommand) {
+		t.Fatalf("expected ADC guidance for early preflight failure, got %q", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "read config") {
+		t.Fatalf("expected ADC failure before config read, got %q", stderr.String())
+	}
+}
+
+func TestRunADCPreflightFailsBeforeConfigParseForVPN(t *testing.T) {
+	stubADCPreflight(t, func(context.Context) error {
+		return errors.New("google: could not find default credentials")
+	})
+	restoreProvider := newComputeProvider
+	newComputeProvider = func(context.Context) (provider.DiscoveryProvider, error) {
+		t.Fatal("provider should not be created when ADC preflight fails")
+		return nil, nil
+	}
+	t.Cleanup(func() {
+		newComputeProvider = restoreProvider
+	})
+
+	configPath := writeTempConfig(t, "org:\n  - name:\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := run(context.Background(), []string{
+		"-t", "vpn",
+		"-o", "dbc",
+		"-w", "native",
+		"-e", "dev",
+		"-c", configPath,
+	}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected error exit code, got %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), adcGuidanceLine) || !strings.Contains(stderr.String(), adcGuidanceCommand) {
+		t.Fatalf("expected ADC guidance for early vpn preflight failure, got %q", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "cannot be empty") {
+		t.Fatalf("expected ADC failure before config parse, got %q", stderr.String())
+	}
+}
+
+func TestRunHelpBypassesADCPreflight(t *testing.T) {
+	stubADCPreflight(t, func(context.Context) error {
+		t.Fatal("ADC preflight should not run for help")
+		return nil
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := run(context.Background(), []string{"-h"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected success exit code, got %d", exitCode)
+	}
+}
+
+func TestRunVersionBypassesADCPreflight(t *testing.T) {
+	stubADCPreflight(t, func(context.Context) error {
+		t.Fatal("ADC preflight should not run for version")
+		return nil
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := run(context.Background(), []string{"version"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected success exit code, got %d", exitCode)
 	}
 }

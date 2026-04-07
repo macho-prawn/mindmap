@@ -12,11 +12,27 @@ import (
 	"netmap/internal/provider"
 	"netmap/internal/version"
 
+	googleoauth "golang.org/x/oauth2/google"
+	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 )
 
 var newComputeProvider = func(ctx context.Context) (provider.DiscoveryProvider, error) {
 	return provider.NewComputeProvider(ctx)
+}
+
+var adcPreflight = func(ctx context.Context) error {
+	creds, err := googleoauth.FindDefaultCredentials(ctx, compute.CloudPlatformScope)
+	if err != nil {
+		return err
+	}
+	if creds == nil || creds.TokenSource == nil {
+		return errors.New("application default credentials are missing a token source")
+	}
+	if _, err := creds.TokenSource.Token(); err != nil {
+		return err
+	}
+	return nil
 }
 
 const (
@@ -39,6 +55,21 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 
 	files := app.RealFileStore{}
+
+	opts, err := app.ParseOptions(args)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if opts.ShowHelp {
+		fmt.Fprint(stdout, opts.Usage)
+		return 0
+	}
+
+	if err := adcPreflight(ctx); err != nil {
+		fmt.Fprintln(stderr, normalizeCredentialError(err))
+		return 1
+	}
 
 	input, err := app.Validate(files, args)
 	if err != nil {

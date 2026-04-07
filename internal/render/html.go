@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"net/url"
 	"strings"
 
 	"netmap/internal/model"
@@ -27,6 +28,7 @@ func renderHTML(report model.Report) ([]byte, error) {
 
 	summary := htmlSelectorSummary(report)
 	title := html.EscapeString(htmlPageTitle(report))
+	faviconURL := htmlFaviconDataURL()
 
 	var b strings.Builder
 	b.Grow(len(mermaidRuntimeJS) + len(graph) + len(mermaidLicense) + 4096)
@@ -41,6 +43,9 @@ func renderHTML(report model.Report) ([]byte, error) {
 	b.WriteString("<html lang=\"en\">\n<head>\n")
 	b.WriteString("  <meta charset=\"utf-8\">\n")
 	b.WriteString("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
+	b.WriteString("  <link rel=\"icon\" type=\"image/svg+xml\" href=\"")
+	b.WriteString(html.EscapeString(faviconURL))
+	b.WriteString("\">\n")
 	b.WriteString("  <title>")
 	b.WriteString(title)
 	b.WriteString("</title>\n")
@@ -50,7 +55,7 @@ func renderHTML(report model.Report) ([]byte, error) {
 	b.WriteString("    main { max-width: 1600px; margin: 0 auto; padding: 24px; }\n")
 	b.WriteString("    h1 { margin: 0 0 8px; font-size: 1.5rem; }\n")
 	b.WriteString("    p { margin: 0 0 16px; color: #425466; }\n")
-	b.WriteString("    .summary-table { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px 16px; margin: 0 0 16px; padding: 16px 18px; background: #fff; border: 1px solid #d7e0ea; border-radius: 12px; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); }\n")
+	b.WriteString("    .summary-table { display: grid; gap: 10px 16px; margin: 0 0 16px; padding: 16px 18px; background: #fff; border: 1px solid #d7e0ea; border-radius: 12px; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); }\n")
 	b.WriteString("    .summary-label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #60758a; }\n")
 	b.WriteString("    .summary-value { font-size: 1rem; font-weight: 600; color: #16202a; }\n")
 	b.WriteString("    .panel { background: #fff; border: 1px solid #d7e0ea; border-radius: 12px; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); padding: 20px; overflow-x: auto; }\n")
@@ -62,15 +67,20 @@ func renderHTML(report model.Report) ([]byte, error) {
 	b.WriteString("  </style>\n")
 	b.WriteString("</head>\n<body>\n")
 	b.WriteString("  <main>\n")
-	b.WriteString("    <div class=\"summary-table\">\n")
-	for _, heading := range []string{"Type", "Org", "Environment", "Workload"} {
+	b.WriteString("    <h1>")
+	b.WriteString(title)
+	b.WriteString("</h1>\n")
+	b.WriteString("    <div class=\"summary-table\" style=\"grid-template-columns: repeat(")
+	b.WriteString(fmt.Sprintf("%d", len(summary.Fields)))
+	b.WriteString(", minmax(120px, 1fr));\">\n")
+	for _, field := range summary.Fields {
 		b.WriteString("      <div class=\"summary-label\">")
-		b.WriteString(heading)
+		b.WriteString(html.EscapeString(field.Label))
 		b.WriteString("</div>\n")
 	}
-	for _, value := range []string{summary.Type, summary.Org, summary.Environment, summary.Workload} {
+	for _, field := range summary.Fields {
 		b.WriteString("      <div class=\"summary-value\">")
-		b.WriteString(html.EscapeString(value))
+		b.WriteString(html.EscapeString(field.Value))
 		b.WriteString("</div>\n")
 	}
 	b.WriteString("    </div>\n")
@@ -100,7 +110,7 @@ func renderHTML(report model.Report) ([]byte, error) {
 	b.WriteString("      status.style.display = 'block';\n")
 	b.WriteString("      status.textContent = 'Mermaid runtime failed to load.';\n")
 	b.WriteString("    } else {\n")
-		b.WriteString("      mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', maxTextSize: 6000000, maxEdges: 4000, flowchart: { htmlLabels: true, useMaxWidth: false } });\n")
+	b.WriteString("      mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', maxTextSize: 6000000, maxEdges: 4000, flowchart: { htmlLabels: true, useMaxWidth: false } });\n")
 	b.WriteString("      Promise.resolve(mermaid.run({ nodes: [diagram] })).catch((error) => {\n")
 	b.WriteString("        status.style.display = 'block';\n")
 	b.WriteString("        status.textContent = 'Failed to render Mermaid diagram: ' + (error && error.message ? error.message : String(error));\n")
@@ -116,20 +126,48 @@ type htmlSummaryValues struct {
 	Org         string
 	Environment string
 	Workload    string
+	Fields      []htmlSummaryField
+}
+
+type htmlSummaryField struct {
+	Label string
+	Value string
 }
 
 func htmlSelectorSummary(report model.Report) htmlSummaryValues {
+	typeValue := properCaseValue(valueOrUnknown(report.Type))
+	orgValue := strings.ToUpper(valueOrUnknown(report.Selectors.Org))
+	workloadValue := properCaseValue(selectorValueOrAll(report.Selectors.Workload))
+	environmentValue := uppercaseSelectorValue(selectorValueOrAll(report.Selectors.Environment))
+
+	fields := []htmlSummaryField{
+		{Label: "Type", Value: typeValue},
+		{Label: "Org", Value: orgValue},
+	}
+	if workloadValue == "All" && environmentValue == "All" {
+		fields = append(fields, htmlSummaryField{Label: "Workload / Environment", Value: "All"})
+	} else {
+		fields = append(fields,
+			htmlSummaryField{Label: "Environment", Value: environmentValue},
+			htmlSummaryField{Label: "Workload", Value: workloadValue},
+		)
+	}
+
 	return htmlSummaryValues{
-		Type:        valueOrUnknown(report.Type),
-		Org:         valueOrUnknown(report.Selectors.Org),
-		Environment: selectorValueOrAll(report.Selectors.Environment),
-		Workload:    selectorValueOrAll(report.Selectors.Workload),
+		Type:        typeValue,
+		Org:         orgValue,
+		Environment: environmentValue,
+		Workload:    workloadValue,
+		Fields:      fields,
 	}
 }
 
 func htmlPageTitle(report model.Report) string {
 	summary := htmlSelectorSummary(report)
-	return fmt.Sprintf("netmap %s %s %s %s", summary.Type, summary.Org, summary.Environment, summary.Workload)
+	if summary.Workload == "All" && summary.Environment == "All" {
+		return fmt.Sprintf("NetMap | %s+%s+All | HTML-Generated Mermaid Report", summary.Type, summary.Org)
+	}
+	return fmt.Sprintf("NetMap | %s+%s+%s+%s | HTML-Generated Mermaid Report", summary.Type, summary.Org, summary.Workload, summary.Environment)
 }
 
 func selectorValueOrAll(value string) string {
@@ -137,4 +175,34 @@ func selectorValueOrAll(value string) string {
 		return "All"
 	}
 	return value
+}
+
+func properCaseValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if strings.EqualFold(value, "all") {
+		return "All"
+	}
+	segments := strings.Split(value, "-")
+	for idx, segment := range segments {
+		if segment == "" {
+			continue
+		}
+		segments[idx] = strings.ToUpper(segment[:1]) + strings.ToLower(segment[1:])
+	}
+	return strings.Join(segments, "-")
+}
+
+func uppercaseSelectorValue(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "all") {
+		return "All"
+	}
+	return strings.ToUpper(strings.TrimSpace(value))
+}
+
+func htmlFaviconDataURL() string {
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#16202a"/><text x="32" y="18" text-anchor="middle" font-family="monospace" font-size="11" fill="#f8fafc">o-o</text><text x="32" y="33" text-anchor="middle" font-family="monospace" font-size="11" fill="#93c5fd">|x|</text><text x="32" y="48" text-anchor="middle" font-family="monospace" font-size="11" fill="#f8fafc">o-o</text></svg>`
+	return "data:image/svg+xml," + url.QueryEscape(svg)
 }

@@ -287,6 +287,9 @@ func TestRenderVPNJSON(t *testing.T) {
 	if !strings.Contains(content, `"vpn_gateway_interface": "0"`) || !strings.Contains(content, `"vpn_gateway_ip": "34.0.0.1"`) || !strings.Contains(content, `"vpn_gateway_ip": "35.0.0.1"`) {
 		t.Fatalf("expected vpn gateway interface/ip fields in json output, got: %s", content)
 	}
+	if strings.Contains(content, `"src_vpn_tunnels":[{"vpn_tunnel":"tunnel-a-1","vpn_gateway_interface":"0","vpn_gateway_ip"`) || strings.Contains(content, `"dst_vpn_tunnels":[{"vpn_tunnel":"tunnel-peer-1","vpn_gateway_interface":"0","vpn_gateway_ip"`) {
+		t.Fatalf("expected vpn gateway ip to be removed from tunnel json nodes, got: %s", content)
+	}
 	if !strings.Contains(content, `"bgp_peering_statuses"`) || !strings.Contains(content, `"dst_vpn_tunnels"`) {
 		t.Fatalf("expected vpn hierarchy to include bgp status and destination tunnel nodes, got: %s", content)
 	}
@@ -345,16 +348,19 @@ func TestRenderVPNTree(t *testing.T) {
 	if !strings.Contains(content, "cloud_router: router-src-a [cloud_router_asn: 64510, cloud_router_interface: if-src-a-1, cloud_router_interface_ip: 169.254.10.1]") {
 		t.Fatalf("expected source router node in vpn tree output, got: %s", content)
 	}
-	if !strings.Contains(content, "vpn_tunnel: tunnel-a-1 [vpn_gateway_interface: 0, vpn_gateway_ip: 34.0.0.1, vpn_tunnel_status: ESTABLISHED]") || !strings.Contains(content, "vpn_tunnel: tunnel-peer-1 [vpn_gateway_interface: 0, vpn_gateway_ip: 35.0.0.1, vpn_tunnel_status: ESTABLISHED]") {
-		t.Fatalf("expected vpn gateway interface/ip fields on tunnel nodes in tree output, got: %s", content)
+	if !strings.Contains(content, "vpn_gateway: ha-a [vpn_gateway_type: ha, vpn_gateway_interface: 0, vpn_gateway_ip: 34.0.0.1]") || !strings.Contains(content, "vpn_gateway: ha-peer [vpn_gateway_type: ha, vpn_gateway_interface: 0, vpn_gateway_ip: 35.0.0.1]") {
+		t.Fatalf("expected vpn gateway interface/ip fields on gateway nodes in tree output, got: %s", content)
+	}
+	if !strings.Contains(content, "vpn_tunnel: tunnel-a-1 [vpn_gateway_interface: 0, vpn_tunnel_status: ESTABLISHED]") || !strings.Contains(content, "vpn_tunnel: tunnel-peer-1 [vpn_gateway_interface: 0, vpn_tunnel_status: ESTABLISHED]") {
+		t.Fatalf("expected vpn tunnel nodes to keep only gateway interface and status in tree output, got: %s", content)
 	}
 	if !strings.Contains(content, "bgp_peering_status: UP") || !strings.Contains(content, "cloud_router: router-a [cloud_router_asn: 64512, cloud_router_interface: if-dst-a-1, cloud_router_interface_ip: 169.254.20.1]") {
 		t.Fatalf("expected status and destination router nodes in vpn tree output, got: %s", content)
 	}
-	if strings.Index(content, "vpn_tunnel: tunnel-a-1 [vpn_gateway_interface: 0, vpn_gateway_ip: 34.0.0.1, vpn_tunnel_status: ESTABLISHED]") > strings.Index(content, "cloud_router: router-src-a [cloud_router_asn: 64510, cloud_router_interface: if-src-a-1, cloud_router_interface_ip: 169.254.10.1]") {
+	if strings.Index(content, "vpn_tunnel: tunnel-a-1 [vpn_gateway_interface: 0, vpn_tunnel_status: ESTABLISHED]") > strings.Index(content, "cloud_router: router-src-a [cloud_router_asn: 64510, cloud_router_interface: if-src-a-1, cloud_router_interface_ip: 169.254.10.1]") {
 		t.Fatalf("expected source tunnel to render before source router in vpn tree output, got: %s", content)
 	}
-	if strings.Index(content, "bgp_peering_status: UP") > strings.Index(content, "cloud_router: router-a [cloud_router_asn: 64512, cloud_router_interface: if-dst-a-1, cloud_router_interface_ip: 169.254.20.1]") || strings.Index(content, "cloud_router: router-a [cloud_router_asn: 64512, cloud_router_interface: if-dst-a-1, cloud_router_interface_ip: 169.254.20.1]") > strings.Index(content, "vpn_tunnel: tunnel-peer-1 [vpn_gateway_interface: 0, vpn_gateway_ip: 35.0.0.1, vpn_tunnel_status: ESTABLISHED]") {
+	if strings.Index(content, "bgp_peering_status: UP") > strings.Index(content, "cloud_router: router-a [cloud_router_asn: 64512, cloud_router_interface: if-dst-a-1, cloud_router_interface_ip: 169.254.20.1]") || strings.Index(content, "cloud_router: router-a [cloud_router_asn: 64512, cloud_router_interface: if-dst-a-1, cloud_router_interface_ip: 169.254.20.1]") > strings.Index(content, "vpn_tunnel: tunnel-peer-1 [vpn_gateway_interface: 0, vpn_tunnel_status: ESTABLISHED]") {
 		t.Fatalf("expected bgp status between source and destination routers, and destination tunnel after destination router in vpn tree output, got: %s", content)
 	}
 	if strings.Contains(content, "mapped:") || strings.Contains(content, "remote_bgp_peer") || strings.Contains(content, "src_vpn_gateway_status") || strings.Contains(content, "dst_vpn_gateway_status") {
@@ -439,14 +445,17 @@ func TestRenderHTML(t *testing.T) {
 	if !strings.Contains(content, "<!DOCTYPE html>") {
 		t.Fatalf("expected html doctype, got %s", content)
 	}
-	if !strings.Contains(content, "<title>netmap interconnect dbc All All</title>") {
+	if !strings.Contains(content, "<title>NetMap | Interconnect+DBC+All | HTML-Generated Mermaid Report</title>") {
 		t.Fatalf("expected selector-based html title, got %s", content)
 	}
-	if !strings.Contains(content, `class="summary-label">Type`) || !strings.Contains(content, `class="summary-label">Org`) || !strings.Contains(content, `class="summary-label">Environment`) || !strings.Contains(content, `class="summary-label">Workload`) {
+	if !strings.Contains(content, `class="summary-label">Type`) || !strings.Contains(content, `class="summary-label">Org`) || !strings.Contains(content, `class="summary-label">Workload / Environment`) {
 		t.Fatalf("expected selector summary headings in html output, got %s", content)
 	}
-	if !strings.Contains(content, `class="summary-value">interconnect`) || !strings.Contains(content, `class="summary-value">dbc`) || !strings.Contains(content, `class="summary-value">All`) {
+	if !strings.Contains(content, `class="summary-value">Interconnect`) || !strings.Contains(content, `class="summary-value">DBC`) || !strings.Contains(content, `class="summary-value">All`) {
 		t.Fatalf("expected selector summary values with All fallback in html output, got %s", content)
+	}
+	if !strings.Contains(content, `<h1>NetMap | Interconnect+DBC+All | HTML-Generated Mermaid Report</h1>`) {
+		t.Fatalf("expected visible html title, got %s", content)
 	}
 	if strings.Contains(content, "netmap interconnect: src to") {
 		t.Fatalf("expected old source-to-target html title to be removed, got %s", content)
@@ -459,6 +468,9 @@ func TestRenderHTML(t *testing.T) {
 	}
 	if !strings.Contains(content, "The MIT License (MIT)") {
 		t.Fatalf("expected embedded mermaid license notice, got %s", content)
+	}
+	if !strings.Contains(content, `rel="icon" type="image/svg+xml" href="data:image/svg+xml,`) || !strings.Contains(content, "o-o") || !strings.Contains(content, "%7Cx%7C") {
+		t.Fatalf("expected inline ascii mesh favicon in html output, got %s", content)
 	}
 	if strings.Contains(content, "cdn.jsdelivr.net") || strings.Contains(content, "https://mermaid.live") {
 		t.Fatalf("expected offline html without external mermaid references, got %s", content)
@@ -479,11 +491,17 @@ func TestRenderHTMLUsesExactSelectorValuesWhenProvided(t *testing.T) {
 	}
 
 	content := string(data)
-	if !strings.Contains(content, "<title>netmap vpn dbc dev native</title>") {
+	if !strings.Contains(content, "<title>NetMap | Vpn+DBC+Native+DEV | HTML-Generated Mermaid Report</title>") {
 		t.Fatalf("expected exact selector values in html title, got %s", content)
 	}
-	if !strings.Contains(content, `class="summary-value">vpn`) || !strings.Contains(content, `class="summary-value">dbc`) || !strings.Contains(content, `class="summary-value">dev`) || !strings.Contains(content, `class="summary-value">native`) {
+	if !strings.Contains(content, `class="summary-value">Vpn`) || !strings.Contains(content, `class="summary-value">DBC`) || !strings.Contains(content, `class="summary-value">DEV`) || !strings.Contains(content, `class="summary-value">Native`) {
 		t.Fatalf("expected exact selector values in html summary, got %s", content)
+	}
+	if !strings.Contains(content, `class="summary-label">Environment`) || !strings.Contains(content, `class="summary-label">Workload`) {
+		t.Fatalf("expected separate environment and workload headings for exact selectors, got %s", content)
+	}
+	if strings.Contains(content, `class="summary-label">Workload / Environment`) {
+		t.Fatalf("did not expect combined workload/environment heading for exact selectors, got %s", content)
 	}
 	if strings.Contains(content, `class="summary-value">All`) {
 		t.Fatalf("did not expect All fallback for exact selector values, got %s", content)
@@ -669,7 +687,13 @@ func TestRenderVPNMermaidCollapsesProjectRegionPairsIntoSeparateNodes(t *testing
 		t.Fatalf("expected source and destination vpc values on vpn region nodes, got %s", content)
 	}
 	if !strings.Contains(content, "vpn_gateway_interface: 0") || !strings.Contains(content, "vpn_gateway_ip: 34.0.0.1") || !strings.Contains(content, "vpn_gateway_ip: 35.0.0.1") {
-		t.Fatalf("expected vpn tunnel labels to include gateway interface/ip fields, got %s", content)
+		t.Fatalf("expected vpn gateway labels to include gateway interface/ip fields, got %s", content)
+	}
+	if !strings.Contains(content, "vpn_tunnel: tunnel-a-1<br>vpn_gateway_interface: 0<br>vpn_tunnel_status: ESTABLISHED") || !strings.Contains(content, "vpn_tunnel: tunnel-peer-1<br>vpn_gateway_interface: 0<br>vpn_tunnel_status: ESTABLISHED") {
+		t.Fatalf("expected vpn tunnel labels to keep gateway interface but omit gateway ip, got %s", content)
+	}
+	if strings.Contains(content, "vpn_tunnel: tunnel-a-1<br>vpn_gateway_interface: 0<br>vpn_gateway_ip: 34.0.0.1") || strings.Contains(content, "vpn_tunnel: tunnel-peer-1<br>vpn_gateway_interface: 0<br>vpn_gateway_ip: 35.0.0.1") {
+		t.Fatalf("expected vpn tunnel labels to omit gateway ip, got %s", content)
 	}
 	if !strings.Contains(content, "cloud_router: router-src-a") || !strings.Contains(content, "cloud_router: router-a") {
 		t.Fatalf("expected dedicated vpn router nodes, got %s", content)
@@ -961,8 +985,8 @@ func TestRenderVPNMermaidCollapsesIdenticalDestinationGatewayRegionProjectWithin
 	if countSubstring(content, "vpn_tunnel: tunnel-peer-1") != 1 || countSubstring(content, "vpn_tunnel: tunnel-peer-2") != 1 {
 		t.Fatalf("expected separate destination tunnel nodes within the source branch, got %s", content)
 	}
-	if countSubstring(content, "vpn_gateway: ha-peer") != 1 {
-		t.Fatalf("expected one shared destination gateway node within the source branch, got %d in %s", countSubstring(content, "vpn_gateway: ha-peer"), content)
+	if countSubstring(content, "vpn_gateway: ha-peer") != 2 {
+		t.Fatalf("expected one destination gateway node per gateway interface within the source branch, got %d in %s", countSubstring(content, "vpn_gateway: ha-peer"), content)
 	}
 	if countSubstring(content, "region: us-central1<br>vpc: dst-vpc-a") != 1 {
 		t.Fatalf("expected one shared destination region/vpc node within the source branch, got %d in %s", countSubstring(content, "region: us-central1<br>vpc: dst-vpc-a"), content)
