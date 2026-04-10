@@ -713,10 +713,10 @@ func TestRenderVPNMermaidCollapsesProjectRegionPairsIntoSeparateNodes(t *testing
 	if !strings.Contains(content, "cloud_router: router-src-a") || !strings.Contains(content, "cloud_router: router-a") {
 		t.Fatalf("expected dedicated vpn router nodes, got %s", content)
 	}
-	if !strings.Contains(content, "cloud_router_interface_ip: 169.254.10.1<br>routes: ALL_SUBNETS, 10.10.0.0/24<br>10.10.1.0/24") {
+	if !strings.Contains(content, "cloud_router_interface_ip: 169.254.10.1<br>routes: ALL_SUBNETS, 10.10.0.0/24,<br>10.10.1.0/24") {
 		t.Fatalf("expected wrapped source routes in vpn mermaid output, got %s", content)
 	}
-	if !strings.Contains(content, "cloud_router_interface_ip: 169.254.20.1<br>routes: ALL_SUBNETS, 192.168.0.0/24<br>192.168.1.0/24") {
+	if !strings.Contains(content, "cloud_router_interface_ip: 169.254.20.1<br>routes: ALL_SUBNETS, 192.168.0.0/24,<br>192.168.1.0/24") {
 		t.Fatalf("expected wrapped destination routes in vpn mermaid output, got %s", content)
 	}
 	if countSubstring(content, "project: src-a") != 1 {
@@ -1019,4 +1019,17 @@ func TestRenderVPNMermaidCollapsesIdenticalDestinationGatewayRegionProjectWithin
 
 func countSubstring(content, needle string) int {
 	return strings.Count(content, needle)
+}
+
+func TestWrappedRoutesLabelLeavesOnlyFinalRouteWithoutTrailingComma(t *testing.T) {
+	got := wrappedRoutesLabel("ALL_SUBNETS, 10.10.0.0/24, 10.10.1.0/24", "<br>")
+	want := "<br>routes: ALL_SUBNETS, 10.10.0.0/24,<br>10.10.1.0/24"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+
+	single := wrappedRoutesLabel("10.30.0.0/24", "<br>")
+	if single != "<br>routes: 10.30.0.0/24" {
+		t.Fatalf("expected single route without trailing comma, got %q", single)
+	}
 }

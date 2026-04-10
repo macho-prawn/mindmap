@@ -1988,13 +1988,22 @@ func wrappedRoutesLabel(routes, lineBreak string) string {
 		return lineBreak + "routes: unknown"
 	}
 
-	rows := make([]string, 0, (len(parts)+1)/2)
-	for idx := 0; idx < len(parts); idx += 2 {
-		end := idx + 2
-		if end > len(parts) {
-			end = len(parts)
+	displayParts := make([]string, 0, len(parts))
+	for idx, part := range parts {
+		if idx < len(parts)-1 {
+			displayParts = append(displayParts, part+",")
+			continue
 		}
-		rows = append(rows, strings.Join(parts[idx:end], ", "))
+		displayParts = append(displayParts, part)
+	}
+
+	rows := make([]string, 0, (len(displayParts)+1)/2)
+	for idx := 0; idx < len(displayParts); idx += 2 {
+		end := idx + 2
+		if end > len(displayParts) {
+			end = len(displayParts)
+		}
+		rows = append(rows, strings.Join(displayParts[idx:end], " "))
 	}
 	if len(rows) == 0 {
 		return lineBreak + "routes: unknown"

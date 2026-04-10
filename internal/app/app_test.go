@@ -870,7 +870,7 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 	if !strings.Contains(content, "cloud_router: router-src") {
 		t.Fatalf("expected vpn source router node in mermaid output, got: %s", content)
 	}
-	if !strings.Contains(content, "cloud_router_interface_ip: 169.254.1.1<br>routes: ALL_SUBNETS, 10.10.0.0/24<br>10.10.1.0/24") {
+	if !strings.Contains(content, "cloud_router_interface_ip: 169.254.1.1<br>routes: ALL_SUBNETS, 10.10.0.0/24,<br>10.10.1.0/24") {
 		t.Fatalf("expected wrapped source routes in vpn mermaid output, got: %s", content)
 	}
 	if !strings.Contains(content, "vpn_gateway: ha-dst") || !strings.Contains(content, "vpn_tunnel: tunnel-dst") {
@@ -879,7 +879,7 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 	if !strings.Contains(content, "cloud_router: router-dst") || !strings.Contains(content, "bgp_peering_status: UP") {
 		t.Fatalf("expected destination router and bgp status details in mermaid output, got: %s", content)
 	}
-	if !strings.Contains(content, "cloud_router_interface_ip: 169.254.1.2<br>routes: ALL_SUBNETS, 192.168.0.0/24<br>192.168.1.0/24") {
+	if !strings.Contains(content, "cloud_router_interface_ip: 169.254.1.2<br>routes: ALL_SUBNETS, 192.168.0.0/24,<br>192.168.1.0/24") {
 		t.Fatalf("expected wrapped destination routes in vpn mermaid output, got: %s", content)
 	}
 	if strings.Index(content, "vpn_tunnel: tunnel-src") > strings.Index(content, "cloud_router: router-src") {
