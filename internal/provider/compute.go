@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -205,12 +206,14 @@ func (p *ComputeProvider) ListCloudRouters(ctx context.Context, project string) 
 						continue
 					}
 					current.BGPPeers = append(current.BGPPeers, model.BGPPeer{
-						Name:         peer.Name,
-						Interface:    peer.InterfaceName,
-						LocalIP:      peer.IpAddress,
-						RemoteIP:     peer.PeerIpAddress,
-						PeerASN:      formatOptionalInt(peer.PeerAsn),
-						SessionState: "",
+						Name:               peer.Name,
+						Interface:          peer.InterfaceName,
+						LocalIP:            peer.IpAddress,
+						RemoteIP:           peer.PeerIpAddress,
+						PeerASN:            formatOptionalInt(peer.PeerAsn),
+						SessionState:       "",
+						AdvertisedGroups:   sortedUniqueTrimmedStrings(peer.AdvertisedGroups),
+						AdvertisedIPRanges: advertisedIPRanges(peer.AdvertisedIpRanges),
 					})
 				}
 				items = append(items, current)
@@ -285,6 +288,19 @@ func formatVPNGatewayInterface(value int64) string {
 		return ""
 	}
 	return strconv.FormatInt(value, 10)
+}
+
+func advertisedIPRanges(ranges []*compute.RouterAdvertisedIpRange) []string {
+	values := make([]string, 0, len(ranges))
+	for _, advertisedRange := range ranges {
+		if advertisedRange == nil {
+			continue
+		}
+		if trimmed := strings.TrimSpace(advertisedRange.Range); trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	return sortedUniqueTrimmedStrings(values)
 }
 
 func haVPNGatewayInterfaceIPs(gateway *compute.VpnGateway) map[string]string {
@@ -402,4 +418,29 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func sortedUniqueTrimmedStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	sort.Strings(result)
+	return result
 }
