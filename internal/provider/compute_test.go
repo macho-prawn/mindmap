@@ -77,3 +77,24 @@ func TestFormatOptionalInt(t *testing.T) {
 		t.Fatalf("expected 64599, got %q", got)
 	}
 }
+
+func TestAdvertisedIPRanges(t *testing.T) {
+	ranges := []*compute.RouterAdvertisedIpRange{
+		{Range: " 10.10.1.0/24 "},
+		nil,
+		{Range: "10.10.0.0/24"},
+		{Range: "10.10.1.0/24"},
+	}
+
+	got := advertisedIPRanges(ranges)
+	if len(got) != 2 || got[0] != "10.10.0.0/24" || got[1] != "10.10.1.0/24" {
+		t.Fatalf("expected sorted unique advertised ranges, got %#v", got)
+	}
+}
+
+func TestSortedUniqueTrimmedStrings(t *testing.T) {
+	got := sortedUniqueTrimmedStrings([]string{" ALL_SUBNETS ", "", "CUSTOM", "ALL_SUBNETS"})
+	if len(got) != 2 || got[0] != "ALL_SUBNETS" || got[1] != "CUSTOM" {
+		t.Fatalf("expected sorted unique trimmed strings, got %#v", got)
+	}
+}

@@ -31,12 +31,14 @@ type RouterInterface struct {
 }
 
 type BGPPeer struct {
-	Name         string
-	Interface    string
-	LocalIP      string
-	RemoteIP     string
-	PeerASN      string
-	SessionState string
+	Name               string
+	Interface          string
+	LocalIP            string
+	RemoteIP           string
+	PeerASN            string
+	SessionState       string
+	AdvertisedGroups   []string
+	AdvertisedIPRanges []string
 }
 
 type CloudRouter struct {
@@ -98,6 +100,7 @@ type MappingItem struct {
 	SrcCloudRouterASN         string `json:"src_cloud_router_asn"`
 	SrcCloudRouterInterface   string `json:"src_cloud_router_interface"`
 	SrcCloudRouterInterfaceIP string `json:"src_cloud_router_interface_ip"`
+	SrcRoutes                 string `json:"src_routes"`
 	SrcVPNTunnel              string `json:"src_vpn_tunnel"`
 	SrcVPNGatewayInterface    string `json:"src_vpn_gateway_interface"`
 	SrcVPNGatewayIP           string `json:"src_vpn_gateway_ip"`
@@ -123,6 +126,7 @@ type MappingItem struct {
 	DstCloudRouterASN         string `json:"dst_cloud_router_asn"`
 	DstCloudRouterInterface   string `json:"dst_cloud_router_interface"`
 	DstCloudRouterInterfaceIP string `json:"dst_cloud_router_interface_ip"`
+	DstRoutes                 string `json:"dst_routes"`
 	RemoteBGPPeer             string `json:"remote_bgp_peer"`
 	RemoteBGPPeerIP           string `json:"remote_bgp_peer_ip"`
 	RemoteBGPPeerASN          string `json:"remote_bgp_peer_asn"`

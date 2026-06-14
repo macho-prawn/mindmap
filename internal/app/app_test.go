@@ -752,6 +752,16 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 					LinkedVPNTunnel: "tunnel-src",
 					IPRange:         "169.254.1.1/30",
 				}},
+				BGPPeers: []model.BGPPeer{{
+					Name:               "peer-src",
+					Interface:          "if-src",
+					LocalIP:            "169.254.1.1",
+					RemoteIP:           "169.254.1.2",
+					PeerASN:            "64513",
+					SessionState:       "UP",
+					AdvertisedGroups:   []string{"ALL_SUBNETS"},
+					AdvertisedIPRanges: []string{"10.10.0.0/24", "10.10.1.0/24"},
+				}},
 			}},
 			"peer-project": {{
 				Name:    "router-dst",
@@ -764,12 +774,14 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 					IPRange:         "169.254.1.2/30",
 				}},
 				BGPPeers: []model.BGPPeer{{
-					Name:         "peer-dst",
-					Interface:    "if-dst",
-					LocalIP:      "169.254.1.2",
-					RemoteIP:     "169.254.1.1",
-					PeerASN:      "64512",
-					SessionState: "UP",
+					Name:               "peer-dst",
+					Interface:          "if-dst",
+					LocalIP:            "169.254.1.2",
+					RemoteIP:           "169.254.1.1",
+					PeerASN:            "64512",
+					SessionState:       "UP",
+					AdvertisedGroups:   []string{"ALL_SUBNETS"},
+					AdvertisedIPRanges: []string{"192.168.0.0/24", "192.168.1.0/24"},
 				}},
 			}},
 		},
@@ -777,6 +789,12 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 			"project/us-central1/router-src": {
 				RouterName: "router-src",
 				Region:     "us-central1",
+				Peers: []model.BGPPeerStatus{{
+					Name:         "peer-src",
+					LocalIP:      "169.254.1.1",
+					RemoteIP:     "169.254.1.2",
+					SessionState: "UP",
+				}},
 			},
 			"peer-project/us-central1/router-dst": {
 				RouterName: "router-dst",
@@ -806,7 +824,7 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 	if len(projectItems) == 0 {
 		t.Fatalf("expected vpn project items to be built")
 	}
-	if projectItems[0].SrcCloudRouter != "router-src" || projectItems[0].SrcCloudRouterInterface != "if-src" || projectItems[0].SrcCloudRouterInterfaceIP != "169.254.1.1/30" {
+	if projectItems[0].SrcCloudRouter != "router-src" || projectItems[0].SrcCloudRouterInterface != "if-src" || projectItems[0].SrcCloudRouterInterfaceIP != "169.254.1.1" {
 		t.Fatalf("expected source router fields in vpn project item, got %+v", projectItems[0])
 	}
 	if projectItems[0].SrcVPC != "src-vpc" || projectItems[0].DstVPC != "dst-vpc" {
@@ -814,6 +832,9 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 	}
 	if projectItems[0].SrcVPNGatewayInterface != "0" || projectItems[0].DstVPNGatewayInterface != "0" || projectItems[0].SrcVPNGatewayIP != "34.0.0.1" || projectItems[0].DstVPNGatewayIP != "35.0.0.1" {
 		t.Fatalf("expected vpn gateway interface/ip fields in vpn project item, got %+v", projectItems[0])
+	}
+	if projectItems[0].SrcRoutes != "ALL_SUBNETS, 10.10.0.0/24, 10.10.1.0/24" || projectItems[0].DstRoutes != "ALL_SUBNETS, 192.168.0.0/24, 192.168.1.0/24" {
+		t.Fatalf("expected vpn routes fields in vpn project item, got %+v", projectItems[0])
 	}
 
 	err = app.Run(context.Background(), []string{
@@ -849,11 +870,17 @@ func TestRunWritesVPNMermaidByDefault(t *testing.T) {
 	if !strings.Contains(content, "cloud_router: router-src") {
 		t.Fatalf("expected vpn source router node in mermaid output, got: %s", content)
 	}
+	if !strings.Contains(content, "cloud_router_interface_ip: 169.254.1.1<br>routes: ALL_SUBNETS, 10.10.0.0/24,<br>10.10.1.0/24") {
+		t.Fatalf("expected wrapped source routes in vpn mermaid output, got: %s", content)
+	}
 	if !strings.Contains(content, "vpn_gateway: ha-dst") || !strings.Contains(content, "vpn_tunnel: tunnel-dst") {
 		t.Fatalf("expected vpn destination nodes in mermaid output, got: %s", content)
 	}
 	if !strings.Contains(content, "cloud_router: router-dst") || !strings.Contains(content, "bgp_peering_status: UP") {
 		t.Fatalf("expected destination router and bgp status details in mermaid output, got: %s", content)
+	}
+	if !strings.Contains(content, "cloud_router_interface_ip: 169.254.1.2<br>routes: ALL_SUBNETS, 192.168.0.0/24,<br>192.168.1.0/24") {
+		t.Fatalf("expected wrapped destination routes in vpn mermaid output, got: %s", content)
 	}
 	if strings.Index(content, "vpn_tunnel: tunnel-src") > strings.Index(content, "cloud_router: router-src") {
 		t.Fatalf("expected source tunnel before source router in mermaid output, got: %s", content)
@@ -945,12 +972,14 @@ func TestBuildVPNProjectItemsMatchesDestinationInterfaceByPeerEvidence(t *testin
 					IPRange:         "169.254.10.1/30",
 				}},
 				BGPPeers: []model.BGPPeer{{
-					Name:         "peer-src",
-					Interface:    "if-src",
-					LocalIP:      "169.254.10.1",
-					RemoteIP:     "169.254.20.2",
-					PeerASN:      "64520",
-					SessionState: "UP",
+					Name:               "peer-src",
+					Interface:          "if-src",
+					LocalIP:            "169.254.10.1",
+					RemoteIP:           "169.254.20.2",
+					PeerASN:            "64520",
+					SessionState:       "UP",
+					AdvertisedGroups:   []string{"ALL_SUBNETS"},
+					AdvertisedIPRanges: []string{"10.20.0.0/24", "10.20.1.0/24"},
 				}},
 			}},
 			"peer-project": {
@@ -965,12 +994,14 @@ func TestBuildVPNProjectItemsMatchesDestinationInterfaceByPeerEvidence(t *testin
 						IPRange:         "169.254.20.2/30",
 					}},
 					BGPPeers: []model.BGPPeer{{
-						Name:         "peer-dst-match",
-						Interface:    "if-dst-match",
-						LocalIP:      "169.254.20.2",
-						RemoteIP:     "169.254.10.1",
-						PeerASN:      "64510",
-						SessionState: "UP",
+						Name:               "peer-dst-match",
+						Interface:          "if-dst-match",
+						LocalIP:            "169.254.20.2",
+						RemoteIP:           "169.254.10.1",
+						PeerASN:            "64510",
+						SessionState:       "UP",
+						AdvertisedGroups:   []string{"ALL_SUBNETS"},
+						AdvertisedIPRanges: []string{"172.16.0.0/24", "172.16.1.0/24"},
 					}},
 				},
 				{
@@ -984,12 +1015,13 @@ func TestBuildVPNProjectItemsMatchesDestinationInterfaceByPeerEvidence(t *testin
 						IPRange:         "169.254.30.2/30",
 					}},
 					BGPPeers: []model.BGPPeer{{
-						Name:         "peer-dst-other",
-						Interface:    "if-dst-other",
-						LocalIP:      "169.254.30.2",
-						RemoteIP:     "169.254.30.1",
-						PeerASN:      "64510",
-						SessionState: "DOWN",
+						Name:               "peer-dst-other",
+						Interface:          "if-dst-other",
+						LocalIP:            "169.254.30.2",
+						RemoteIP:           "169.254.30.1",
+						PeerASN:            "64510",
+						SessionState:       "DOWN",
+						AdvertisedIPRanges: []string{"172.30.0.0/24"},
 					}},
 				},
 			},
@@ -1051,6 +1083,9 @@ func TestBuildVPNProjectItemsMatchesDestinationInterfaceByPeerEvidence(t *testin
 	}
 	if item.DstCloudRouterInterface != "if-dst-match" || item.DstCloudRouterInterfaceIP != "169.254.20.2" {
 		t.Fatalf("expected peer evidence to select the matching destination interface, got %+v", item)
+	}
+	if item.SrcRoutes != "ALL_SUBNETS, 10.20.0.0/24, 10.20.1.0/24" || item.DstRoutes != "ALL_SUBNETS, 172.16.0.0/24, 172.16.1.0/24" {
+		t.Fatalf("expected matched source and destination routes to propagate, got %+v", item)
 	}
 	if item.BGPPeeringStatus != "UP" {
 		t.Fatalf("expected matched peer session state to propagate, got %+v", item)

@@ -59,6 +59,7 @@ var vpnSeparatedHeader = []string{
 	"src_cloud_router_asn",
 	"src_cloud_router_interface",
 	"src_cloud_router_interface_ip",
+	"src_routes",
 	"src_vpn_tunnel",
 	"src_vpn_gateway_interface",
 	"src_vpn_gateway_ip",
@@ -72,6 +73,7 @@ var vpnSeparatedHeader = []string{
 	"dst_cloud_router_asn",
 	"dst_cloud_router_interface",
 	"dst_cloud_router_interface_ip",
+	"dst_routes",
 	"dst_vpn_gateway",
 	"dst_vpn_gateway_type",
 	"dst_region",
@@ -167,6 +169,7 @@ func vpnSeparatedRecord(item model.MappingItem) []string {
 		item.SrcCloudRouterASN,
 		item.SrcCloudRouterInterface,
 		item.SrcCloudRouterInterfaceIP,
+		item.SrcRoutes,
 		item.SrcVPNTunnel,
 		item.SrcVPNGatewayInterface,
 		item.SrcVPNGatewayIP,
@@ -180,6 +183,7 @@ func vpnSeparatedRecord(item model.MappingItem) []string {
 		item.DstCloudRouterASN,
 		item.DstCloudRouterInterface,
 		item.DstCloudRouterInterfaceIP,
+		item.DstRoutes,
 		item.DstVPNGateway,
 		item.DstVPNGatewayType,
 		item.DstRegion,
@@ -1014,6 +1018,7 @@ type vpnSourceRouterGroup struct {
 	SrcCloudRouterASN         string
 	SrcCloudRouterInterface   string
 	SrcCloudRouterInterfaceIP string
+	SrcRoutes                 string
 	BGPStatuses               []vpnBGPStatusGroup
 }
 
@@ -1027,6 +1032,7 @@ type vpnDestinationRouterGroup struct {
 	DstCloudRouterASN         string
 	DstCloudRouterInterface   string
 	DstCloudRouterInterfaceIP string
+	DstRoutes                 string
 	DstTunnels                []vpnDestinationTunnelGroup
 }
 
@@ -1106,6 +1112,7 @@ type vpnJSONSourceRouter struct {
 	SrcCloudRouterASN         string             `json:"cloud_router_asn"`
 	SrcCloudRouterInterface   string             `json:"cloud_router_interface"`
 	SrcCloudRouterInterfaceIP string             `json:"cloud_router_interface_ip"`
+	SrcRoutes                 string             `json:"routes"`
 	BGPStatuses               []vpnJSONBGPStatus `json:"bgp_peering_statuses,omitempty"`
 }
 
@@ -1119,6 +1126,7 @@ type vpnJSONDestinationRouter struct {
 	DstCloudRouterASN         string                     `json:"cloud_router_asn"`
 	DstCloudRouterInterface   string                     `json:"cloud_router_interface"`
 	DstCloudRouterInterfaceIP string                     `json:"cloud_router_interface_ip"`
+	DstRoutes                 string                     `json:"routes"`
 	DstTunnels                []vpnJSONDestinationTunnel `json:"dst_vpn_tunnels,omitempty"`
 }
 
@@ -1191,6 +1199,7 @@ func buildVPNJSONOrg(group vpnOrgGroup) vpnJSONOrgNode {
 									SrcCloudRouterASN:         valueOrUnknown(srcRouter.SrcCloudRouterASN),
 									SrcCloudRouterInterface:   valueOrUnknown(srcRouter.SrcCloudRouterInterface),
 									SrcCloudRouterInterfaceIP: valueOrUnknown(srcRouter.SrcCloudRouterInterfaceIP),
+									SrcRoutes:                 valueOrUnknown(srcRouter.SrcRoutes),
 								}
 								for _, status := range srcRouter.BGPStatuses {
 									statusNode := vpnJSONBGPStatus{
@@ -1202,6 +1211,7 @@ func buildVPNJSONOrg(group vpnOrgGroup) vpnJSONOrgNode {
 											DstCloudRouterASN:         valueOrUnknown(dstRouter.DstCloudRouterASN),
 											DstCloudRouterInterface:   valueOrUnknown(dstRouter.DstCloudRouterInterface),
 											DstCloudRouterInterfaceIP: valueOrUnknown(dstRouter.DstCloudRouterInterfaceIP),
+											DstRoutes:                 valueOrUnknown(dstRouter.DstRoutes),
 										}
 										for _, dstTunnel := range dstRouter.DstTunnels {
 											dstTunnelNode := vpnJSONDestinationTunnel{
@@ -1282,7 +1292,7 @@ func renderVPNMermaid(report model.Report) []byte {
 		srcRegionID := mermaidID("vpn-src-region-" + item.Org + "-" + item.SrcProject + "-" + item.SrcRegion + "-" + item.SrcVPC)
 		srcGatewayID := mermaidID("vpn-src-gateway-" + item.Org + "-" + item.SrcProject + "-" + item.SrcRegion + "-" + item.SrcVPC + "-" + item.SrcVPNGateway + "-" + item.SrcVPNGatewayType + "-" + item.SrcVPNGatewayInterface + "-" + item.SrcVPNGatewayIP)
 		srcTunnelID := mermaidID("vpn-src-tunnel-" + srcGatewayID + "-" + item.SrcVPNTunnel + "-" + item.SrcVPNGatewayInterface + "-" + item.SrcVPNTunnelStatus)
-		srcRouterID := mermaidID("vpn-src-router-" + srcTunnelID + "-" + item.SrcCloudRouter + "-" + item.SrcCloudRouterASN + "-" + item.SrcCloudRouterInterface + "-" + item.SrcCloudRouterInterfaceIP)
+		srcRouterID := mermaidID("vpn-src-router-" + srcTunnelID + "-" + item.SrcCloudRouter + "-" + item.SrcCloudRouterASN + "-" + item.SrcCloudRouterInterface + "-" + item.SrcCloudRouterInterfaceIP + "-" + item.SrcRoutes)
 
 		defineMermaidNode(&b, seen, orgID, "org: "+valueOrUnknown(item.Org))
 		linkIfMissing(&b, seen, orgID, workloadID, "workload: "+valueOrUnknown(item.Workload))
@@ -1309,7 +1319,7 @@ func renderVPNMermaid(report model.Report) []byte {
 		// Keep the destination branch scoped to the current source-tunnel/status path
 		// so distinct tunnel pairs never collapse into one shared Mermaid subtree.
 		branchScopeID := mermaidID("vpn-dst-scope-" + statusID + "-" + item.SrcVPNTunnel)
-		dstRouterID := mermaidID("vpn-dst-router-" + branchScopeID + "-" + item.DstCloudRouter + "-" + item.DstCloudRouterASN + "-" + item.DstCloudRouterInterface + "-" + item.DstCloudRouterInterfaceIP)
+		dstRouterID := mermaidID("vpn-dst-router-" + branchScopeID + "-" + item.DstCloudRouter + "-" + item.DstCloudRouterASN + "-" + item.DstCloudRouterInterface + "-" + item.DstCloudRouterInterfaceIP + "-" + item.DstRoutes)
 
 		linkIfMissing(&b, seen, statusID, dstRouterID, vpnDestinationRouterItemLabel(item))
 		if strings.TrimSpace(item.DstVPNTunnel) == "" {
@@ -1465,7 +1475,7 @@ func groupVPNSourceRouters(items []model.MappingItem) []vpnSourceRouterGroup {
 	grouped := make(map[string][]model.MappingItem)
 	var keys []string
 	for _, item := range items {
-		key := item.SrcCloudRouter + "\x00" + item.SrcCloudRouterASN + "\x00" + item.SrcCloudRouterInterface + "\x00" + item.SrcCloudRouterInterfaceIP
+		key := item.SrcCloudRouter + "\x00" + item.SrcCloudRouterASN + "\x00" + item.SrcCloudRouterInterface + "\x00" + item.SrcCloudRouterInterfaceIP + "\x00" + item.SrcRoutes
 		if _, ok := grouped[key]; !ok {
 			keys = append(keys, key)
 		}
@@ -1483,6 +1493,7 @@ func groupVPNSourceRouters(items []model.MappingItem) []vpnSourceRouterGroup {
 			SrcCloudRouterASN:         groupItems[0].SrcCloudRouterASN,
 			SrcCloudRouterInterface:   groupItems[0].SrcCloudRouterInterface,
 			SrcCloudRouterInterfaceIP: groupItems[0].SrcCloudRouterInterfaceIP,
+			SrcRoutes:                 groupItems[0].SrcRoutes,
 			BGPStatuses:               groupVPNBGPStatuses(groupItems),
 		})
 	}
@@ -1519,7 +1530,7 @@ func groupVPNDestinationRouters(items []model.MappingItem) []vpnDestinationRoute
 		if strings.TrimSpace(item.DstCloudRouter) == "" {
 			continue
 		}
-		key := item.DstCloudRouter + "\x00" + item.DstCloudRouterASN + "\x00" + item.DstCloudRouterInterface + "\x00" + item.DstCloudRouterInterfaceIP
+		key := item.DstCloudRouter + "\x00" + item.DstCloudRouterASN + "\x00" + item.DstCloudRouterInterface + "\x00" + item.DstCloudRouterInterfaceIP + "\x00" + item.DstRoutes
 		if _, ok := grouped[key]; !ok {
 			keys = append(keys, key)
 		}
@@ -1537,6 +1548,7 @@ func groupVPNDestinationRouters(items []model.MappingItem) []vpnDestinationRoute
 			DstCloudRouterASN:         groupItems[0].DstCloudRouterASN,
 			DstCloudRouterInterface:   groupItems[0].DstCloudRouterInterface,
 			DstCloudRouterInterfaceIP: groupItems[0].DstCloudRouterInterfaceIP,
+			DstRoutes:                 groupItems[0].DstRoutes,
 			DstTunnels:                groupVPNDestinationTunnels(groupItems),
 		})
 	}
@@ -1771,6 +1783,8 @@ func drawVPNTreeSourceRouter(b *strings.Builder, router vpnSourceRouterGroup, in
 		valueOrUnknown(router.SrcCloudRouterInterface),
 		valueOrUnknown(router.SrcCloudRouterInterfaceIP),
 	)
+	routeIsLast := len(router.BGPStatuses) == 0
+	drawVPNTreeRoutes(b, router.SrcRoutes, childIndent, routeIsLast)
 	for idx, status := range router.BGPStatuses {
 		drawVPNTreeBGPStatus(b, status, childIndent, idx == len(router.BGPStatuses)-1)
 	}
@@ -1806,9 +1820,19 @@ func drawVPNTreeDestinationRouter(b *strings.Builder, router vpnDestinationRoute
 		valueOrUnknown(router.DstCloudRouterInterface),
 		valueOrUnknown(router.DstCloudRouterInterfaceIP),
 	)
+	routeIsLast := len(router.DstTunnels) == 0
+	drawVPNTreeRoutes(b, router.DstRoutes, childIndent, routeIsLast)
 	for idx, tunnel := range router.DstTunnels {
 		drawVPNTreeDestinationTunnel(b, tunnel, childIndent, idx == len(router.DstTunnels)-1)
 	}
+}
+
+func drawVPNTreeRoutes(b *strings.Builder, routes, indent string, isLast bool) {
+	prefix := "|--"
+	if isLast {
+		prefix = "`--"
+	}
+	fmt.Fprintf(b, "%s%s routes: %s\n", indent, prefix, valueOrUnknown(routes))
 }
 
 func drawVPNTreeDestinationTunnel(b *strings.Builder, tunnel vpnDestinationTunnelGroup, indent string, isLast bool) {
@@ -1902,11 +1926,12 @@ func vpnSourceRegionItemLabel(item model.MappingItem) string {
 
 func vpnSourceRouterItemLabel(item model.MappingItem) string {
 	return fmt.Sprintf(
-		"cloud_router: %s<br>cloud_router_asn: %s<br>cloud_router_interface: %s<br>cloud_router_interface_ip: %s",
+		"cloud_router: %s<br>cloud_router_asn: %s<br>cloud_router_interface: %s<br>cloud_router_interface_ip: %s%s",
 		valueOrUnknown(item.SrcCloudRouter),
 		valueOrUnknown(item.SrcCloudRouterASN),
 		valueOrUnknown(item.SrcCloudRouterInterface),
 		valueOrUnknown(item.SrcCloudRouterInterfaceIP),
+		wrappedRoutesLabel(item.SrcRoutes, "<br>"),
 	)
 }
 
@@ -1948,12 +1973,61 @@ func vpnDestinationTunnelItemLabel(item model.MappingItem) string {
 
 func vpnDestinationRouterItemLabel(item model.MappingItem) string {
 	return fmt.Sprintf(
-		"cloud_router: %s<br>cloud_router_asn: %s<br>cloud_router_interface: %s<br>cloud_router_interface_ip: %s",
+		"cloud_router: %s<br>cloud_router_asn: %s<br>cloud_router_interface: %s<br>cloud_router_interface_ip: %s%s",
 		valueOrUnknown(item.DstCloudRouter),
 		valueOrUnknown(item.DstCloudRouterASN),
 		valueOrUnknown(item.DstCloudRouterInterface),
 		valueOrUnknown(item.DstCloudRouterInterfaceIP),
+		wrappedRoutesLabel(item.DstRoutes, "<br>"),
 	)
+}
+
+func wrappedRoutesLabel(routes, lineBreak string) string {
+	parts := splitRoutes(routes)
+	if len(parts) == 0 {
+		return lineBreak + "routes: unknown"
+	}
+
+	displayParts := make([]string, 0, len(parts))
+	for idx, part := range parts {
+		if idx < len(parts)-1 {
+			displayParts = append(displayParts, part+",")
+			continue
+		}
+		displayParts = append(displayParts, part)
+	}
+
+	rows := make([]string, 0, (len(displayParts)+1)/2)
+	for idx := 0; idx < len(displayParts); idx += 2 {
+		end := idx + 2
+		if end > len(displayParts) {
+			end = len(displayParts)
+		}
+		rows = append(rows, strings.Join(displayParts[idx:end], " "))
+	}
+	if len(rows) == 0 {
+		return lineBreak + "routes: unknown"
+	}
+
+	label := lineBreak + "routes: " + rows[0]
+	for _, row := range rows[1:] {
+		label += lineBreak + row
+	}
+	return label
+}
+
+func splitRoutes(routes string) []string {
+	if strings.TrimSpace(routes) == "" {
+		return nil
+	}
+	parts := strings.Split(routes, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func defineMermaidNode(b *strings.Builder, seen map[string]struct{}, id, label string) {

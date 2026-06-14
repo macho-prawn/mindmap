@@ -259,6 +259,7 @@ type vpnSourceInterfaceCandidate struct {
 	RouterNetwork string
 	InterfaceName string
 	InterfaceIP   string
+	Routes        string
 	Peers         []model.BGPPeer
 }
 
@@ -275,6 +276,7 @@ type vpnDestinationInterfaceCandidate struct {
 	RouterASN        string
 	InterfaceName    string
 	InterfaceIP      string
+	Routes           string
 	Peers            []model.BGPPeer
 }
 
@@ -506,6 +508,7 @@ func (a *App) buildVPNProjectItems(ctx context.Context, sourceProject string, de
 					applyVPNDestinationCandidate(&item, sharedDestination)
 					item.DstCloudRouterInterface = ""
 					item.DstCloudRouterInterfaceIP = ""
+					item.DstRoutes = ""
 				}
 				item.BGPPeeringStatus = "unknown"
 				items = append(items, item)
@@ -751,6 +754,7 @@ func vpnSourceInterfaceCandidates(sourceData vpnProjectData, tunnel model.VPNTun
 			RouterNetwork: base.RouterNetwork,
 			InterfaceName: iface.Name,
 			InterfaceIP:   preferredInterfaceIP(iface, peers),
+			Routes:        vpnRoutes(peers),
 			Peers:         peers,
 		})
 	}
@@ -773,6 +777,7 @@ func applyVPNSourceCandidate(item *model.MappingItem, candidate vpnSourceInterfa
 	item.SrcCloudRouterASN = candidate.RouterASN
 	item.SrcCloudRouterInterface = candidate.InterfaceName
 	item.SrcCloudRouterInterfaceIP = candidate.InterfaceIP
+	item.SrcRoutes = candidate.Routes
 }
 
 func applyVPNDestinationCandidate(item *model.MappingItem, candidate vpnDestinationInterfaceCandidate) {
@@ -788,6 +793,7 @@ func applyVPNDestinationCandidate(item *model.MappingItem, candidate vpnDestinat
 	item.DstCloudRouterASN = candidate.RouterASN
 	item.DstCloudRouterInterface = candidate.InterfaceName
 	item.DstCloudRouterInterfaceIP = candidate.InterfaceIP
+	item.DstRoutes = candidate.Routes
 }
 
 func vpnDestinationInterfaceCandidates(sourceTunnel model.VPNTunnel, sourceGateway, destinationGateway model.VPNGateway, destinationData vpnProjectData) []vpnDestinationInterfaceCandidate {
@@ -837,6 +843,7 @@ func vpnDestinationInterfaceCandidates(sourceTunnel model.VPNTunnel, sourceGatew
 				RouterASN:        base.RouterASN,
 				InterfaceName:    iface.Name,
 				InterfaceIP:      preferredInterfaceIP(iface, peers),
+				Routes:           vpnRoutes(peers),
 				Peers:            peers,
 			})
 		}
@@ -988,6 +995,25 @@ func vpnPeerASNs(peers []model.BGPPeer) []string {
 	return uniqueStrings(values)
 }
 
+func vpnRoutes(peers []model.BGPPeer) string {
+	var groups []string
+	var ranges []string
+	for _, peer := range peers {
+		groups = append(groups, peer.AdvertisedGroups...)
+		ranges = append(ranges, peer.AdvertisedIPRanges...)
+	}
+
+	groups = uniqueStrings(trimmedStrings(groups))
+	ranges = uniqueStrings(trimmedStrings(ranges))
+	sort.Strings(groups)
+	sort.Strings(ranges)
+
+	routes := make([]string, 0, len(groups)+len(ranges))
+	routes = append(routes, groups...)
+	routes = append(routes, ranges...)
+	return strings.Join(routes, ", ")
+}
+
 func firstPeerSessionState(peers []model.BGPPeer) string {
 	for _, peer := range peers {
 		if strings.TrimSpace(peer.SessionState) != "" {
@@ -1060,6 +1086,16 @@ func uniqueStrings(values []string) []string {
 		}
 		seen[value] = struct{}{}
 		result = append(result, value)
+	}
+	return result
+}
+
+func trimmedStrings(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			result = append(result, trimmed)
+		}
 	}
 	return result
 }

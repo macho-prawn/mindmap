@@ -153,6 +153,7 @@ The usage text shown by `./netmap` and `./netmap -h` is sourced from the editabl
 - Includes Classic VPN gateways and tunnels as source-side unmapped output when no peer GCP project can be discovered.
 - Uses a VPN-specific hierarchy across JSON, tree, Mermaid, and HTML output: `org -> workload -> environment -> src_project -> src_region -> src_vpn_gateway -> src_tunnel -> src_cloud_router -> bgp_peering_status -> dst_cloud_router -> dst_tunnel -> dst_vpn_gateway -> dst_region -> dst_project`.
 - Uses a VPN-specific Mermaid grouping strategy that shares repeated `src_project -> src_region[src_vpc]` nodes and collapses identical destination gateway/region/project paths within the same source-tunnel branch.
+- Emits peer-advertised router-interface `routes` for both source and destination VPN Cloud Routers across flat and structured output.
 - Uses the same csv, tsv, json, tree, mermaid, and html output formats as interconnect reports.
 
 ## Output
@@ -190,7 +191,7 @@ org,workload,environment,src_project,src_interconnect,mapped,src_region,src_stat
 #### VPN
 
 ```text
-org,workload,environment,src_project,src_region,src_vpn_gateway,src_vpn_gateway_type,src_cloud_router,src_cloud_router_asn,src_cloud_router_interface,src_cloud_router_interface_ip,src_vpn_tunnel,src_vpn_gateway_interface,src_vpn_gateway_ip,src_vpn_tunnel_status,bgp_peering_status,dst_vpn_tunnel,dst_vpn_gateway_interface,dst_vpn_gateway_ip,dst_vpn_tunnel_status,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,dst_vpn_gateway,dst_vpn_gateway_type,dst_region,dst_project
+org,workload,environment,src_project,src_region,src_vpn_gateway,src_vpn_gateway_type,src_cloud_router,src_cloud_router_asn,src_cloud_router_interface,src_cloud_router_interface_ip,src_routes,src_vpn_tunnel,src_vpn_gateway_interface,src_vpn_gateway_ip,src_vpn_tunnel_status,bgp_peering_status,dst_vpn_tunnel,dst_vpn_gateway_interface,dst_vpn_gateway_ip,dst_vpn_tunnel_status,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,dst_routes,dst_vpn_gateway,dst_vpn_gateway_type,dst_region,dst_project
 ```
 
 ## Notes
@@ -206,6 +207,7 @@ org,workload,environment,src_project,src_region,src_vpn_gateway,src_vpn_gateway_
 - Mermaid output is a shared-node DAG and may intentionally collapse matching labels across workload, environment, source-project, interconnect, and destination-region layers
 - VPN Mermaid output uses a separate node-key strategy that collapses repeated `src_project -> src_region[src_vpc]` pairs and reuses identical destination gateway/region/project nodes within the same source-tunnel branch
 - In structured VPN output, source and destination region nodes render as `region [vpc: ...]`
+- In structured VPN output, source and destination `cloud_router` nodes include peer-advertised `routes`
 - VPN Mermaid renders `bgp_peering_status` as its own node between source and destination `cloud_router` nodes
 - Mermaid labels use `<br>` line breaks so they render correctly in Mermaid-compatible viewers, including the offline HTML output
 - Runtime discovery is performed with Google Compute API clients, not the `gcloud` CLI

@@ -104,6 +104,7 @@ func sampleVPNReport() model.Report {
 				SrcCloudRouterASN:         "64510",
 				SrcCloudRouterInterface:   "if-src-a-1",
 				SrcCloudRouterInterfaceIP: "169.254.10.1",
+				SrcRoutes:                 "ALL_SUBNETS, 10.10.0.0/24, 10.10.1.0/24",
 				SrcVPNTunnel:              "tunnel-a-1",
 				SrcVPNGatewayInterface:    "0",
 				SrcVPNGatewayIP:           "34.0.0.1",
@@ -122,6 +123,7 @@ func sampleVPNReport() model.Report {
 				DstCloudRouterASN:         "64512",
 				DstCloudRouterInterface:   "if-dst-a-1",
 				DstCloudRouterInterfaceIP: "169.254.20.1",
+				DstRoutes:                 "ALL_SUBNETS, 192.168.0.0/24, 192.168.1.0/24",
 				BGPPeeringStatus:          "UP",
 			},
 			{
@@ -137,6 +139,7 @@ func sampleVPNReport() model.Report {
 				SrcCloudRouterASN:         "64510",
 				SrcCloudRouterInterface:   "if-src-a-2",
 				SrcCloudRouterInterfaceIP: "169.254.10.5",
+				SrcRoutes:                 "10.20.0.0/24, 10.20.1.0/24",
 				SrcVPNTunnel:              "tunnel-a-2",
 				SrcVPNGatewayInterface:    "1",
 				SrcVPNGatewayIP:           "34.0.0.2",
@@ -155,6 +158,7 @@ func sampleVPNReport() model.Report {
 				DstCloudRouterASN:         "64513",
 				DstCloudRouterInterface:   "if-dst-a-2",
 				DstCloudRouterInterfaceIP: "169.254.20.5",
+				DstRoutes:                 "172.16.0.0/24, 172.16.1.0/24",
 				BGPPeeringStatus:          "UP",
 			},
 			{
@@ -170,6 +174,7 @@ func sampleVPNReport() model.Report {
 				SrcCloudRouterASN:         "64511",
 				SrcCloudRouterInterface:   "if-src-b-1",
 				SrcCloudRouterInterfaceIP: "169.254.30.1",
+				SrcRoutes:                 "10.30.0.0/24",
 				SrcVPNTunnel:              "tunnel-b-1",
 				SrcVPNGatewayInterface:    "0",
 				SrcVPNGatewayIP:           "36.0.0.1",
@@ -188,6 +193,7 @@ func sampleVPNReport() model.Report {
 				DstCloudRouterASN:         "64514",
 				DstCloudRouterInterface:   "if-dst-b-1",
 				DstCloudRouterInterfaceIP: "169.254.40.1",
+				DstRoutes:                 "172.30.0.0/24",
 				BGPPeeringStatus:          "DOWN",
 			},
 		},
@@ -223,8 +229,11 @@ func TestRenderVPNCSV(t *testing.T) {
 		t.Fatalf("expected csv extension, got %q", ext)
 	}
 	content := string(data)
-	if !strings.Contains(content, "org,workload,environment,src_project,src_region,src_vpn_gateway,src_vpn_gateway_type,src_cloud_router,src_cloud_router_asn,src_cloud_router_interface,src_cloud_router_interface_ip,src_vpn_tunnel,src_vpn_gateway_interface,src_vpn_gateway_ip,src_vpn_tunnel_status,bgp_peering_status,dst_vpn_tunnel,dst_vpn_gateway_interface,dst_vpn_gateway_ip,dst_vpn_tunnel_status,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,dst_vpn_gateway,dst_vpn_gateway_type,dst_region,dst_project") {
+	if !strings.Contains(content, "org,workload,environment,src_project,src_region,src_vpn_gateway,src_vpn_gateway_type,src_cloud_router,src_cloud_router_asn,src_cloud_router_interface,src_cloud_router_interface_ip,src_routes,src_vpn_tunnel,src_vpn_gateway_interface,src_vpn_gateway_ip,src_vpn_tunnel_status,bgp_peering_status,dst_vpn_tunnel,dst_vpn_gateway_interface,dst_vpn_gateway_ip,dst_vpn_tunnel_status,dst_cloud_router,dst_cloud_router_asn,dst_cloud_router_interface,dst_cloud_router_interface_ip,dst_routes,dst_vpn_gateway,dst_vpn_gateway_type,dst_region,dst_project") {
 		t.Fatalf("unexpected vpn csv header order: %s", content)
+	}
+	if !strings.Contains(content, "\"ALL_SUBNETS, 10.10.0.0/24, 10.10.1.0/24\"") || !strings.Contains(content, "\"ALL_SUBNETS, 192.168.0.0/24, 192.168.1.0/24\"") {
+		t.Fatalf("expected vpn routes fields in csv output: %s", content)
 	}
 	if strings.Contains(content, "mapped") || strings.Contains(content, "remote_bgp_peer") || strings.Contains(content, "src_vpn_gateway_status") || strings.Contains(content, "dst_vpn_gateway_status") {
 		t.Fatalf("unexpected vpn-only removed fields in csv output: %s", content)
@@ -283,6 +292,9 @@ func TestRenderVPNJSON(t *testing.T) {
 	}
 	if !strings.Contains(content, `"cloud_router": "router-src-a"`) || !strings.Contains(content, `"cloud_router": "router-a"`) {
 		t.Fatalf("expected source and destination router nodes in vpn json output, got: %s", content)
+	}
+	if !strings.Contains(content, `"routes": "ALL_SUBNETS, 10.10.0.0/24, 10.10.1.0/24"`) || !strings.Contains(content, `"routes": "ALL_SUBNETS, 192.168.0.0/24, 192.168.1.0/24"`) {
+		t.Fatalf("expected source and destination routes fields in vpn json output, got: %s", content)
 	}
 	if !strings.Contains(content, `"vpn_gateway_interface": "0"`) || !strings.Contains(content, `"vpn_gateway_ip": "34.0.0.1"`) || !strings.Contains(content, `"vpn_gateway_ip": "35.0.0.1"`) {
 		t.Fatalf("expected vpn gateway interface/ip fields in json output, got: %s", content)
@@ -347,6 +359,9 @@ func TestRenderVPNTree(t *testing.T) {
 	}
 	if !strings.Contains(content, "cloud_router: router-src-a [cloud_router_asn: 64510, cloud_router_interface: if-src-a-1, cloud_router_interface_ip: 169.254.10.1]") {
 		t.Fatalf("expected source router node in vpn tree output, got: %s", content)
+	}
+	if !strings.Contains(content, "routes: ALL_SUBNETS, 10.10.0.0/24, 10.10.1.0/24") || !strings.Contains(content, "routes: ALL_SUBNETS, 192.168.0.0/24, 192.168.1.0/24") {
+		t.Fatalf("expected source and destination routes in vpn tree output, got: %s", content)
 	}
 	if !strings.Contains(content, "vpn_gateway: ha-a [vpn_gateway_type: ha, vpn_gateway_interface: 0, vpn_gateway_ip: 34.0.0.1]") || !strings.Contains(content, "vpn_gateway: ha-peer [vpn_gateway_type: ha, vpn_gateway_interface: 0, vpn_gateway_ip: 35.0.0.1]") {
 		t.Fatalf("expected vpn gateway interface/ip fields on gateway nodes in tree output, got: %s", content)
@@ -698,6 +713,12 @@ func TestRenderVPNMermaidCollapsesProjectRegionPairsIntoSeparateNodes(t *testing
 	if !strings.Contains(content, "cloud_router: router-src-a") || !strings.Contains(content, "cloud_router: router-a") {
 		t.Fatalf("expected dedicated vpn router nodes, got %s", content)
 	}
+	if !strings.Contains(content, "cloud_router_interface_ip: 169.254.10.1<br>routes: ALL_SUBNETS, 10.10.0.0/24,<br>10.10.1.0/24") {
+		t.Fatalf("expected wrapped source routes in vpn mermaid output, got %s", content)
+	}
+	if !strings.Contains(content, "cloud_router_interface_ip: 169.254.20.1<br>routes: ALL_SUBNETS, 192.168.0.0/24,<br>192.168.1.0/24") {
+		t.Fatalf("expected wrapped destination routes in vpn mermaid output, got %s", content)
+	}
 	if countSubstring(content, "project: src-a") != 1 {
 		t.Fatalf("expected one shared source project node, got %d in %s", countSubstring(content, "project: src-a"), content)
 	}
@@ -998,4 +1019,17 @@ func TestRenderVPNMermaidCollapsesIdenticalDestinationGatewayRegionProjectWithin
 
 func countSubstring(content, needle string) int {
 	return strings.Count(content, needle)
+}
+
+func TestWrappedRoutesLabelLeavesOnlyFinalRouteWithoutTrailingComma(t *testing.T) {
+	got := wrappedRoutesLabel("ALL_SUBNETS, 10.10.0.0/24, 10.10.1.0/24", "<br>")
+	want := "<br>routes: ALL_SUBNETS, 10.10.0.0/24,<br>10.10.1.0/24"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+
+	single := wrappedRoutesLabel("10.30.0.0/24", "<br>")
+	if single != "<br>routes: 10.30.0.0/24" {
+		t.Fatalf("expected single route without trailing comma, got %q", single)
+	}
 }
